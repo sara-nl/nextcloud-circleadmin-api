@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>circlesadmin</id>
+    <name>Circles Admin</name>
+    <summary>Admin management for all Circles/Teams</summary>
+    <description><![CDATA[
+Allows Nextcloud administrators to manage all Circles without being a member.
+Provides API endpoints for listing, creating, deleting circles and managing members.
+    ]]></description>
+    <version>0.2.0</version>
+    <licence>agpl</licence>
+    <author>SURF</author>
+    <namespace>CirclesAdmin</namespace>
+    <category>tools</category>
+    <dependencies>
+        <nextcloud min-version="27" max-version="32"/>
+    </dependencies>
+    <settings>
+        <admin>OCA\CirclesAdmin\Settings\AdminSettings</admin>
+        <admin-section>OCA\CirclesAdmin\Settings\AdminSection</admin-section>
+    </settings>
+</info>

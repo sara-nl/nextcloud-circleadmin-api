@@ -10,6 +10,8 @@ use OCA\Circles\Model\Member;
 use OCA\Circles\Model\FederatedUser;
 use OCA\Circles\Model\Probes\CircleProbe;
 use OCA\Circles\Service\CircleService;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
 use OCP\IUserManager;
 use OCP\Server;
 use Psr\Log\LoggerInterface;
@@ -18,15 +20,18 @@ class CirclesAdminService {
 
     private CirclesManager $circlesManager;
     private IUserManager $userManager;
+    private IDBConnection $db;
     private LoggerInterface $logger;
 
     public function __construct(
         CirclesManager $circlesManager,
         IUserManager $userManager,
+        IDBConnection $db,
         LoggerInterface $logger
     ) {
         $this->circlesManager = $circlesManager;
         $this->userManager = $userManager;
+        $this->db = $db;
         $this->logger = $logger;
     }
 
@@ -76,13 +81,26 @@ class CirclesAdminService {
         }
     }
 
-    public function createCircle(string $name, string $ownerUserId): array {
+    public function createCircle(string $name, string $ownerUserId, ?string $description = null): array {
         $this->circlesManager->startSuperSession();
         $this->circlesManager->startAppSession('circlesadmin');
         try {
             $owner = $this->circlesManager->getFederatedUser($ownerUserId, Member::TYPE_USER);
             $circle = $this->circlesManager->createCircle($name, $owner);
-            return $this->formatCircle($circle);
+            $circleId = $circle->getSingleId();
+
+            // Set description directly via DB (Circles async processing prevents API-based update)
+            if ($description !== null && $description !== '') {
+                $qb = $this->db->getQueryBuilder();
+                $qb->update('circles_circle')
+                    ->set('description', $qb->createNamedParameter($description))
+                    ->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
+                $qb->executeStatement();
+            }
+
+            $data = $this->formatCircle($circle);
+            $data['description'] = $description ?? '';
+            return $data;
         } finally {
             $this->stopSession();
         }
@@ -99,7 +117,6 @@ class CirclesAdminService {
             if ($description !== null) {
                 $circleService->updateDescription($circleId, $description);
             }
-            // Return updated circle
             $this->circlesManager->stopSession();
             $this->circlesManager->startSuperSession();
             $circle = $this->circlesManager->getCircle($circleId);
@@ -188,7 +205,22 @@ class CirclesAdminService {
             'level' => $member->getLevel(),
             'levelName' => $this->levelName($member->getLevel()),
             'status' => $member->getStatus(),
+            'userType' => $member->getUserType(),
+            'userTypeName' => $this->userTypeName($member->getUserType()),
         ];
+    }
+
+    private function userTypeName(int $type): string {
+        return match ($type) {
+            0 => 'Single',
+            1 => 'User',
+            2 => 'Group',
+            4 => 'Mail',
+            8 => 'Contact',
+            16 => 'Circle',
+            10000 => 'App',
+            default => 'Unknown (' . $type . ')',
+        };
     }
 
     private function levelName(int $level): string {

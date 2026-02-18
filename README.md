@@ -60,7 +60,7 @@ Returns all circles on the instance (including system, hidden, and backend circl
 GET /circles/{circleId}
 ```
 
-Returns circle info including all members.
+Returns circle info including description and all members.
 
 **Response** `200`
 ```json
@@ -73,6 +73,7 @@ Returns circle info including all members.
       "memberCount": 3,
       "config": 0,
       "source": 16,
+      "description": "A description for the circle",
       "members": [
         {
           "id": "mem456",
@@ -81,7 +82,9 @@ Returns circle info including all members.
           "displayName": "John Doe",
           "level": 9,
           "levelName": "Owner",
-          "status": "Member"
+          "status": "Member",
+          "userType": 1,
+          "userTypeName": "User"
         }
       ]
     }
@@ -103,7 +106,8 @@ POST /circles
 ```json
 {
   "name": "New Circle",
-  "owner": "john"
+  "owner": "john",
+  "desc": "Optional description"
 }
 ```
 
@@ -111,6 +115,9 @@ POST /circles
 |-----------|--------|----------|------------------------------------------|
 | `name`    | string | yes      | Circle name (min 3 characters)           |
 | `owner`   | string | no       | User ID of owner. Defaults to admin user |
+| `desc`    | string | no       | Circle description                       |
+
+> **Note**: The description field is named `desc` (not `description`) due to a Nextcloud OCS framework limitation.
 
 **Response** `201`
 ```json
@@ -122,7 +129,8 @@ POST /circles
       "owner": "john",
       "memberCount": 1,
       "config": 0,
-      "source": 16
+      "source": 16,
+      "description": "Optional description"
     }
   }
 }
@@ -201,6 +209,34 @@ Permanently deletes a circle regardless of who owns it.
 
 ## Members
 
+### Member object
+
+All member endpoints return members with these fields:
+
+| Field          | Type   | Description                                |
+|----------------|--------|--------------------------------------------|
+| `id`           | string | Member ID (use this for remove/level ops)  |
+| `singleId`     | string | Single circle ID of the member             |
+| `userId`       | string | Nextcloud user ID                          |
+| `displayName`  | string | Display name                               |
+| `level`        | int    | Permission level (1/4/8/9)                 |
+| `levelName`    | string | Human-readable level name                  |
+| `status`       | string | Membership status                          |
+| `userType`     | int    | Member type (1=User, 2=Group, 16=Circle, etc.) |
+| `userTypeName` | string | Human-readable type name                   |
+
+**User types**:
+
+| Type | Name    |
+|------|---------|
+| `1`  | User    |
+| `2`  | Group   |
+| `4`  | Mail    |
+| `8`  | Contact |
+| `16` | Circle  |
+
+---
+
 ### List members
 
 ```
@@ -219,7 +255,9 @@ GET /circles/{circleId}/members
         "displayName": "John Doe",
         "level": 9,
         "levelName": "Owner",
-        "status": "Member"
+        "status": "Member",
+        "userType": 1,
+        "userTypeName": "User"
       }
     ]
   }
@@ -258,7 +296,9 @@ POST /circles/{circleId}/members
       "displayName": "Jane Smith",
       "level": 1,
       "levelName": "Member",
-      "status": "Member"
+      "status": "Member",
+      "userType": 1,
+      "userTypeName": "User"
     }
   }
 }
@@ -335,13 +375,13 @@ BASE="https://cloud.example.com/ocs/v2.php/apps/circlesadmin/api/v1"
 AUTH="admin:password"
 HEADERS='-H "OCS-APIRequest: true" -H "Accept: application/json" -H "Content-Type: application/json"'
 
-# 1. Create circle (owner: alice)
+# 1. Create circle with description (owner: alice)
 curl -u $AUTH $HEADERS -X POST "$BASE/circles" \
-  -d '{"name":"Project X","owner":"alice"}'
+  -d '{"name":"Project X","owner":"alice","desc":"Main project circle"}'
 
 # 2. Update circle name & description
 curl -u $AUTH $HEADERS -X PUT "$BASE/circles/{circleId}" \
-  -d '{"name":"Project X Renamed","description":"Our main project circle"}'
+  -d '{"name":"Project X Renamed","description":"Updated description"}'
 
 # 3. Add member bob
 curl -u $AUTH $HEADERS -X POST "$BASE/circles/{circleId}/members" \

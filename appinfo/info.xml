@@ -8,7 +8,7 @@
 Allows Nextcloud administrators to manage all Circles without being a member.
 Provides API endpoints for listing, creating, deleting circles and managing members.
     ]]></description>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <licence>agpl</licence>
     <author>SURF</author>
     <namespace>CirclesAdmin</namespace>

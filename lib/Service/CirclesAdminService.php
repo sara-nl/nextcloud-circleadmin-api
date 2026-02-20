@@ -89,14 +89,16 @@ class CirclesAdminService {
             $circle = $this->circlesManager->createCircle($name, $owner);
             $circleId = $circle->getSingleId();
 
-            // Set description directly via DB (Circles async processing prevents API-based update)
-            if ($description !== null && $description !== '') {
-                $qb = $this->db->getQueryBuilder();
-                $qb->update('circles_circle')
-                    ->set('description', $qb->createNamedParameter($description))
-                    ->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
-                $qb->executeStatement();
+            // Fix config: appSession creates with config=2 (personal), reset to 0 (open)
+            // Also set description if provided
+            $qb = $this->db->getQueryBuilder();
+            $qb->update("circles_circle")
+                ->set("config", $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+                ->where($qb->expr()->eq("unique_id", $qb->createNamedParameter($circleId)));
+            if ($description !== null && $description !== "") {
+                $qb->set("description", $qb->createNamedParameter($description));
             }
+            $qb->executeStatement();
 
             $data = $this->formatCircle($circle);
             $data['description'] = $description ?? '';

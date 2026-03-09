@@ -71,10 +71,10 @@ class CircleApiController extends OCSController {
         // Get description from request params (not a method param to avoid Dispatcher issues)
         $params = $this->request->getParams();
         $description = isset($params["desc"]) ? (string)$params["desc"] : null;
-        $local = !empty($params["local"]);
+        $federated = !empty($params["federated"]);
         try {
             return new DataResponse(
-                $this->service->createCircle($name, $ownerUserId, $description, $local),
+                $this->service->createCircle($name, $ownerUserId, $description, $federated),
                 Http::STATUS_CREATED
             );
         } catch (\Exception $e) {

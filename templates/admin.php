@@ -17,7 +17,7 @@
         <tbody>
             <tr><td>GET</td><td>.../api/v1/circles</td><td>List all circles</td></tr>
             <tr><td>GET</td><td>.../api/v1/circles/{circleId}</td><td>Circle details + members</td></tr>
-            <tr><td>POST</td><td>.../api/v1/circles</td><td>Create circle (name, owner, desc, local)</td></tr>
+            <tr><td>POST</td><td>.../api/v1/circles</td><td>Create circle (name, owner, desc, federated)</td></tr>
             <tr><td>PUT</td><td>.../api/v1/circles/{circleId}</td><td>Update circle (name, description)</td></tr>
             <tr><td>DELETE</td><td>.../api/v1/circles/{circleId}</td><td>Delete circle</td></tr>
             <tr><td>GET</td><td>.../api/v1/circles/{circleId}/members</td><td>List members</td></tr>

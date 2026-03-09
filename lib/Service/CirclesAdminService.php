@@ -81,7 +81,7 @@ class CirclesAdminService {
         }
     }
 
-    public function createCircle(string $name, string $ownerUserId, ?string $description = null): array {
+    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $local = false): array {
         $this->circlesManager->startSuperSession();
         $this->circlesManager->startAppSession('circlesadmin');
         try {
@@ -93,7 +93,7 @@ class CirclesAdminService {
             // Also set description if provided
             $qb = $this->db->getQueryBuilder();
             $qb->update("circles_circle")
-                ->set("config", $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+                ->set("config", $qb->createNamedParameter($local ? 4096 : 0, IQueryBuilder::PARAM_INT))
                 ->where($qb->expr()->eq("unique_id", $qb->createNamedParameter($circleId)));
             if ($description !== null && $description !== "") {
                 $qb->set("description", $qb->createNamedParameter($description));
@@ -102,6 +102,7 @@ class CirclesAdminService {
 
             $data = $this->formatCircle($circle);
             $data['description'] = $description ?? '';
+            $data['config'] = $local ? 4096 : 0;
             return $data;
         } finally {
             $this->stopSession();

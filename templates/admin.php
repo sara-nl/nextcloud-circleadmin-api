@@ -15,14 +15,20 @@
             </tr>
         </thead>
         <tbody>
-            <tr><td>GET</td><td>/ocs/v2.php/apps/circlesadmin/api/v1/circles</td><td>List all circles</td></tr>
-            <tr><td>GET</td><td>/ocs/v2.php/apps/circlesadmin/api/v1/circles/{id}</td><td>Circle details + members</td></tr>
-            <tr><td>POST</td><td>/ocs/v2.php/apps/circlesadmin/api/v1/circles</td><td>Create circle (name, owner)</td></tr>
-            <tr><td>DELETE</td><td>/ocs/v2.php/apps/circlesadmin/api/v1/circles/{id}</td><td>Delete circle</td></tr>
-            <tr><td>GET</td><td>.../circles/{id}/members</td><td>List members</td></tr>
-            <tr><td>POST</td><td>.../circles/{id}/members</td><td>Add member (userId)</td></tr>
-            <tr><td>DELETE</td><td>.../circles/{id}/members/{memberId}</td><td>Remove member</td></tr>
-            <tr><td>PUT</td><td>.../circles/{id}/members/{memberId}/level</td><td>Set level (1/4/8/9)</td></tr>
+            <tr><td>GET</td><td>.../api/v1/circles</td><td>List all circles</td></tr>
+            <tr><td>GET</td><td>.../api/v1/circles/{circleId}</td><td>Circle details + members</td></tr>
+            <tr><td>POST</td><td>.../api/v1/circles</td><td>Create circle (name, owner, desc, local)</td></tr>
+            <tr><td>PUT</td><td>.../api/v1/circles/{circleId}</td><td>Update circle (name, description)</td></tr>
+            <tr><td>DELETE</td><td>.../api/v1/circles/{circleId}</td><td>Delete circle</td></tr>
+            <tr><td>GET</td><td>.../api/v1/circles/{circleId}/members</td><td>List members</td></tr>
+            <tr><td>POST</td><td>.../api/v1/circles/{circleId}/members</td><td>Add member (userId)</td></tr>
+            <tr><td>DELETE</td><td>.../api/v1/circles/{circleId}/members/{memberId}</td><td>Remove member</td></tr>
+            <tr><td>PUT</td><td>.../api/v1/circles/{circleId}/members/{memberId}/level</td><td>Set level (1/4/8/9)</td></tr>
         </tbody>
     </table>
+
+    <p style="margin-top:10px">
+        <?php p($l->t('Base URL: /ocs/v2.php/apps/circlesadmin')); ?><br/>
+        <?php p($l->t('All endpoints require admin credentials via Basic Auth + OCS-APIRequest header.')); ?>
+    </p>
 </div>

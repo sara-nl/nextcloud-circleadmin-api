@@ -107,7 +107,8 @@ POST /circles
 {
   "name": "New Circle",
   "owner": "john",
-  "desc": "Optional description"
+  "desc": "Optional description",
+  "local": true
 }
 ```
 
@@ -116,6 +117,7 @@ POST /circles
 | `name`    | string | yes      | Circle name (min 3 characters)           |
 | `owner`   | string | no       | User ID of owner. Defaults to admin user |
 | `desc`    | string | no       | Circle description                       |
+| `local`   | bool   | no       | `true` for local circle (config=4096), default: federated (config=0) |
 
 > **Note**: The description field is named `desc` (not `description`) due to a Nextcloud OCS framework limitation.
 
@@ -128,7 +130,7 @@ POST /circles
       "name": "New Circle",
       "owner": "john",
       "memberCount": 1,
-      "config": 0,
+      "config": 4096,
       "source": 16,
       "description": "Optional description"
     }
@@ -375,9 +377,13 @@ BASE="https://cloud.example.com/ocs/v2.php/apps/circlesadmin/api/v1"
 AUTH="admin:password"
 HEADERS='-H "OCS-APIRequest: true" -H "Accept: application/json" -H "Content-Type: application/json"'
 
-# 1. Create circle with description (owner: alice)
+# 1. Create federated circle with description (owner: alice)
 curl -u $AUTH $HEADERS -X POST "$BASE/circles" \
   -d '{"name":"Project X","owner":"alice","desc":"Main project circle"}'
+
+# 1b. Or create a local circle (not federated)
+curl -u $AUTH $HEADERS -X POST "$BASE/circles" \
+  -d '{"name":"Local Project","owner":"alice","desc":"Local only","local":true}'
 
 # 2. Update circle name & description
 curl -u $AUTH $HEADERS -X PUT "$BASE/circles/{circleId}" \

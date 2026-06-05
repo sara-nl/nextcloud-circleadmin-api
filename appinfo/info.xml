@@ -8,13 +8,13 @@
 Allows Nextcloud administrators to manage all Circles without being a member.
 Provides API endpoints for listing, creating, deleting circles and managing members.
     ]]></description>
-    <version>0.4.1</version>
+    <version>0.4.2</version>
     <licence>agpl</licence>
     <author>SURF</author>
     <namespace>CirclesAdmin</namespace>
     <category>tools</category>
     <dependencies>
-        <nextcloud min-version="27" max-version="32"/>
+        <nextcloud min-version="27" max-version="33"/>
     </dependencies>
     <settings>
         <admin>OCA\CirclesAdmin\Settings\AdminSettings</admin>

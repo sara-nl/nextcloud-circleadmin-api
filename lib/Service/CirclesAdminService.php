@@ -208,9 +208,27 @@ class CirclesAdminService {
             'level' => $member->getLevel(),
             'levelName' => $this->levelName($member->getLevel()),
             'status' => $member->getStatus(),
+            'statusName' => $this->statusName($member),
             'userType' => $member->getUserType(),
             'userTypeName' => $this->userTypeName($member->getUserType()),
         ];
+    }
+
+    /**
+     * Human-friendly member status. Circles reports members that have been
+     * invited to a circle but not yet accepted with level 0 (no membership
+     * level) and an empty/non-"Member" status, which reads as "unknown".
+     * Surface that as "Invited" instead.
+     */
+    private function statusName(Member $member): string {
+        $status = $member->getStatus();
+        return match ($status) {
+            Member::STATUS_MEMBER => 'Member',
+            Member::STATUS_INVITED => 'Invited',
+            Member::STATUS_REQUEST => 'Requesting',
+            Member::STATUS_BLOCKED => 'Blocked',
+            default => $member->getLevel() === Member::LEVEL_NONE ? 'Invited' : ($status ?: 'Unknown'),
+        };
     }
 
     private function userTypeName(int $type): string {

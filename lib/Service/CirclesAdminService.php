@@ -10,6 +10,7 @@ use OCA\Circles\Model\Member;
 use OCA\Circles\Model\FederatedUser;
 use OCA\Circles\Model\Probes\CircleProbe;
 use OCA\Circles\Service\CircleService;
+use OCA\Circles\Service\FederatedUserService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IUserManager;
@@ -37,6 +38,18 @@ class CirclesAdminService {
 
     private function getCircleService(): CircleService {
         return Server::get(CircleService::class);
+    }
+
+    private function getFederatedUserService(): FederatedUserService {
+        return Server::get(FederatedUserService::class);
+    }
+
+    private function roleLevel(string $role): int {
+        return match (strtolower($role)) {
+            'member' => Member::LEVEL_MEMBER,
+            'admin' => Member::LEVEL_ADMIN,
+            default => Member::LEVEL_MODERATOR,
+        };
     }
 
     private function stopSession(): void {
@@ -68,7 +81,12 @@ class CirclesAdminService {
     public function getCircle(string $circleId): array {
         $this->circlesManager->startSuperSession();
         try {
-            $circle = $this->circlesManager->getCircle($circleId);
+            $probe = new CircleProbe();
+            $probe->includeSystemCircles()
+                   ->includeSingleCircles()
+                   ->includeHiddenCircles()
+                   ->includeBackendCircles();
+            $circle = $this->circlesManager->getCircle($circleId, $probe);
             $data = $this->formatCircle($circle);
             $data['description'] = $circle->getDescription();
             $data['members'] = [];
@@ -81,9 +99,15 @@ class CirclesAdminService {
         }
     }
 
-    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false): array {
+    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = []): array {
+        if ($appManaged) {
+            $data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role);
+            return empty($configFlags) ? $data : $this->setCircleConfig($data['id'], $configFlags);
+        }
+
         $this->circlesManager->startSuperSession();
         $this->circlesManager->startAppSession('circlesadmin');
+        $circleId = null;
         try {
             $owner = $this->circlesManager->getFederatedUser($ownerUserId, Member::TYPE_USER);
             $circle = $this->circlesManager->createCircle($name, $owner);
@@ -103,6 +127,66 @@ class CirclesAdminService {
             $data = $this->formatCircle($circle);
             $data['description'] = $description ?? '';
             $data['config'] = $federated ? 0 : 4096;
+        } finally {
+            $this->stopSession();
+        }
+
+        // Apply any requested config flags (e.g. federated) via the supported
+        // updateConfig path, once the base circle exists.
+        if (!empty($configFlags) && $circleId !== null) {
+            $data = $this->setCircleConfig($circleId, $configFlags);
+            $data['description'] = $description ?? '';
+        }
+        return $data;
+    }
+
+    /**
+     * Create a team owned by the Circles app itself and flagged as app-managed
+     * (CFG_APP). Such a team cannot be edited, renamed or deleted from the
+     * Nextcloud Teams UI by regular users; members are managed only through this
+     * admin API. If a $managerUserId is given, that user is added at the level
+     * matching $role ('moderator' by default) so they can manage members from
+     * the UI without being able to change the team's settings. A 'moderator' or
+     * 'member' can manage members but not edit/delete the team; an 'admin' also
+     * gets the edit/settings UI. Pass an empty string for a team with no human
+     * manager.
+     */
+    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator'): array {
+        $this->circlesManager->startSuperSession();
+        // startAppSession sets a "current app" patron so member operations
+        // (createCircle owner, addMember) have a valid invitedBy context.
+        $this->circlesManager->startAppSession('circlesadmin');
+        try {
+            // Owner is the Circles app itself, not a user (like the group system circles).
+            $appOwner = $this->getFederatedUserService()->getAppInitiator('circles', Member::APP_CIRCLES);
+            $circle = $this->circlesManager->createCircle($name, $appOwner);
+            $circleId = $circle->getSingleId();
+
+            // Lock the team from the front-end: sets CFG_APP.
+            $this->circlesManager->flagAsAppManaged($circleId, true);
+
+            if ($description !== null && $description !== '') {
+                $qb = $this->db->getQueryBuilder();
+                $qb->update('circles_circle')
+                    ->set('description', $qb->createNamedParameter($description))
+                    ->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
+                $qb->executeStatement();
+            }
+
+            if ($managerUserId !== '') {
+                $manager = $this->circlesManager->getFederatedUser($managerUserId, Member::TYPE_USER);
+                $member = $this->circlesManager->addMember($circleId, $manager);
+                $level = $this->roleLevel($role);
+                if ($level !== Member::LEVEL_MEMBER) {
+                    $this->circlesManager->levelMember($member->getId(), $level);
+                }
+            }
+
+            $probe = new CircleProbe();
+            $probe->includeSystemCircles();
+            $circle = $this->circlesManager->getCircle($circleId, $probe);
+            $data = $this->formatCircle($circle);
+            $data['description'] = $description ?? '';
             return $data;
         } finally {
             $this->stopSession();
@@ -110,9 +194,9 @@ class CirclesAdminService {
     }
 
     public function updateCircle(string $circleId, ?string $name, ?string $description): array {
-        $this->circlesManager->startSuperSession(true);
-        $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
         try {
+            $this->circlesManager->startSuperSession(true);
+            $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
             $circleService = $this->getCircleService();
             if ($name !== null) {
                 $circleService->updateName($circleId, $name);
@@ -131,20 +215,102 @@ class CirclesAdminService {
         }
     }
 
-    public function destroyCircle(string $circleId): void {
-        $this->circlesManager->startSuperSession(true);
-        $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
+    /**
+     * Toggle user-settable config flags on a team. $flags maps a flag name (see
+     * self::CONFIG_FLAGS, e.g. 'federated', 'visible', 'open') to a bool: true to
+     * enable, false to disable. Enabling 'federated' lets federated users be
+     * added to the team through the Nextcloud Contacts app.
+     *
+     * @param array<string, bool> $flags
+     * @throws \InvalidArgumentException on an unknown flag name
+     */
+    public function setCircleConfig(string $circleId, array $flags): array {
+        $config = $this->readCircleConfig($circleId);
+        foreach ($flags as $name => $enabled) {
+            $bit = $this->configFlagBit($name);
+            if ($enabled) {
+                $config |= $bit;
+            } else {
+                $config &= ~$bit;
+            }
+        }
+
         try {
+            $this->circlesManager->startSuperSession(true);
+            $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
+            $circle = $this->circlesManager->getCircle($circleId);
+            $circle->setConfig($config);
+            $this->circlesManager->updateConfig($circle);
+            $this->circlesManager->stopSession();
+
+            $this->circlesManager->startSuperSession();
+            $circle = $this->circlesManager->getCircle($circleId);
+            $data = $this->formatCircle($circle);
+            $data['description'] = $circle->getDescription();
+            return $data;
+        } finally {
+            $this->stopSession();
+        }
+    }
+
+    private function configFlagBit(string $name): int {
+        $name = strtolower(trim($name));
+        if (!isset(self::CONFIG_FLAGS[$name])) {
+            throw new \InvalidArgumentException(
+                'Unknown config flag: ' . $name . '. Allowed: ' . implode(', ', array_keys(self::CONFIG_FLAGS))
+            );
+        }
+        return self::CONFIG_FLAGS[$name];
+    }
+
+    public function destroyCircle(string $circleId): void {
+        // App-managed teams (CFG_APP) are owned by the Circles app and cannot be
+        // destroyed through the normal OCS path ("Team is managed from an other
+        // app"); clear the flag first, using an app session so the app owner is a
+        // valid initiator. Read the config straight from the DB so the lookup is
+        // independent of session visibility.
+        if (($this->readCircleConfig($circleId) & Circle::CFG_APP) !== 0) {
+            try {
+                $this->circlesManager->startSuperSession(true);
+                $this->circlesManager->startAppSession('circlesadmin');
+                $this->circlesManager->flagAsAppManaged($circleId, false);
+                $this->circlesManager->destroyCircle($circleId);
+                return;
+            } finally {
+                $this->stopSession();
+            }
+        }
+
+        // Regular circle: destroy as the circle owner.
+        try {
+            $this->circlesManager->startSuperSession(true);
+            $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
             $this->circlesManager->destroyCircle($circleId);
         } finally {
             $this->stopSession();
         }
     }
 
+    private function readCircleConfig(string $circleId): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('config')
+            ->from('circles_circle')
+            ->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
+        $result = $qb->executeQuery();
+        $config = $result->fetchOne();
+        $result->closeCursor();
+        return $config === false ? 0 : (int)$config;
+    }
+
     public function getMembers(string $circleId): array {
         $this->circlesManager->startSuperSession();
         try {
-            $circle = $this->circlesManager->getCircle($circleId);
+            $probe = new CircleProbe();
+            $probe->includeSystemCircles()
+                   ->includeSingleCircles()
+                   ->includeHiddenCircles()
+                   ->includeBackendCircles();
+            $circle = $this->circlesManager->getCircle($circleId, $probe);
             $result = [];
             foreach ($circle->getMembers() as $member) {
                 $result[] = $this->formatMember($member);
@@ -156,9 +322,9 @@ class CirclesAdminService {
     }
 
     public function addMember(string $circleId, string $userId): array {
-        $this->circlesManager->startSuperSession(true);
-        $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
         try {
+            $this->circlesManager->startSuperSession(true);
+            $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
             $federatedUser = $this->circlesManager->getFederatedUser($userId, Member::TYPE_USER);
             $member = $this->circlesManager->addMember($circleId, $federatedUser);
             return $this->formatMember($member);
@@ -168,9 +334,10 @@ class CirclesAdminService {
     }
 
     public function removeMember(string $circleId, string $memberId): void {
-        $this->circlesManager->startSuperSession(true);
-        $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
         try {
+            $this->circlesManager->startSuperSession(true);
+            $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
+            $this->assertMemberInCircle($circleId, $memberId);
             $this->circlesManager->removeMember($memberId);
         } finally {
             $this->stopSession();
@@ -178,14 +345,52 @@ class CirclesAdminService {
     }
 
     public function setMemberLevel(string $circleId, string $memberId, int $level): void {
-        $this->circlesManager->startSuperSession(true);
-        $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
+        if (!in_array($level, [Member::LEVEL_MEMBER, Member::LEVEL_MODERATOR, Member::LEVEL_ADMIN, Member::LEVEL_OWNER], true)) {
+            throw new \InvalidArgumentException('Invalid level. Allowed: 1 (Member), 4 (Moderator), 8 (Admin), 9 (Owner).');
+        }
         try {
+            $this->circlesManager->startSuperSession(true);
+            $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
+            $this->assertMemberInCircle($circleId, $memberId);
             $this->circlesManager->levelMember($memberId, $level);
         } finally {
             $this->stopSession();
         }
     }
+
+    /**
+     * Ensure the given member ID actually belongs to the given circle, so a
+     * member of another circle cannot be mutated through this circle's URL.
+     *
+     * @throws \InvalidArgumentException if the member is not part of the circle
+     */
+    private function assertMemberInCircle(string $circleId, string $memberId): void {
+        $circle = $this->circlesManager->getCircle($circleId);
+        foreach ($circle->getMembers() as $member) {
+            if ($member->getId() === $memberId) {
+                return;
+            }
+        }
+        throw new \InvalidArgumentException('Member not found in this team.');
+    }
+
+    /**
+     * User-settable config flags, keyed by the name accepted/returned by the API.
+     * These are the flags an admin may toggle on a team; system flags
+     * (SINGLE/PERSONAL/SYSTEM/NO_OWNER/HIDDEN/BACKEND) are managed internally by
+     * Circles and are intentionally not exposed here.
+     */
+    private const CONFIG_FLAGS = [
+        'visible' => Circle::CFG_VISIBLE,       // 8    - visible to everyone in search
+        'open' => Circle::CFG_OPEN,             // 16   - anyone can join
+        'invite' => Circle::CFG_INVITE,         // 32   - joining requires an invitation
+        'request' => Circle::CFG_REQUEST,       // 64   - join request needs moderator approval
+        'friend' => Circle::CFG_FRIEND,         // 128  - members can invite their friends
+        'protected' => Circle::CFG_PROTECTED,   // 256  - password protected
+        'local' => Circle::CFG_LOCAL,           // 4096 - local only (not federated)
+        'federated' => Circle::CFG_FEDERATED,   // 32768- federated: add users from other instances
+        'mountpoint' => Circle::CFG_MOUNTPOINT, // 65536- create a Files folder
+    ];
 
     private function formatCircle(Circle $circle): array {
         $owner = $circle->getOwner();
@@ -195,8 +400,25 @@ class CirclesAdminService {
             'owner' => $owner ? $owner->getUserId() : null,
             'memberCount' => $circle->getMembers() ? count($circle->getMembers()) : 0,
             'config' => $circle->getConfig(),
+            'configFlags' => $this->configFlagNames($circle->getConfig()),
+            'appManaged' => ($circle->getConfig() & Circle::CFG_APP) !== 0,
+            'federated' => ($circle->getConfig() & Circle::CFG_FEDERATED) !== 0,
             'source' => $circle->getSource(),
         ];
+    }
+
+    /**
+     * Readable list of the user-settable flags currently set on a config value,
+     * e.g. [8192 => …] config 40968 -> ['visible', 'federated'].
+     */
+    private function configFlagNames(int $config): array {
+        $names = [];
+        foreach (self::CONFIG_FLAGS as $name => $bit) {
+            if (($config & $bit) !== 0) {
+                $names[] = $name;
+            }
+        }
+        return $names;
     }
 
     private function formatMember(Member $member): array {

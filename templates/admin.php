@@ -107,12 +107,13 @@ $endpoints = [
             [
                 'method' => 'POST', 'path' => '/circles/{circleId}/members',
                 'summary' => 'Add a member',
-                'desc' => 'Adds a Nextcloud user to the team.',
+                'desc' => 'Adds a Nextcloud user to the team. Pass type=circle to nest another team as a member.',
                 'params' => [
                     ['circleId', 'path', 'Team single ID'],
-                    ['userId', 'body', 'Nextcloud user ID. Required.'],
+                    ['userId', 'body', 'User ID, or (for type=circle) the single ID of the team to nest. Required.'],
+                    ['type', 'body', 'user (default) or circle. circle adds another team as a member.'],
                 ],
-                'body' => "{\n  \"userId\": \"jane\"\n}",
+                'body' => "{\n  \"userId\": \"jane\",\n  \"type\": \"user\"\n}",
                 'response' => "{\n  \"id\": \"mem789\",\n  \"userId\": \"jane\",\n  \"level\": 1,\n  \"levelName\": \"Member\",\n  \"statusName\": \"Member\"\n}",
             ],
             [

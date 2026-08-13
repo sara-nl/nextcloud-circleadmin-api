@@ -397,6 +397,8 @@ GET /circles/{circleId}/members
 POST /circles/{circleId}/members
 ```
 
+Adds a member to a team. By default a Nextcloud user is added; pass `type: "circle"` to add another team as a member (nested teams).
+
 **Body**
 ```json
 {
@@ -404,9 +406,20 @@ POST /circles/{circleId}/members
 }
 ```
 
-| Parameter | Type   | Required | Description          |
-|-----------|--------|----------|----------------------|
-| `userId`  | string | yes      | Nextcloud user ID    |
+Nest a team inside another team:
+```json
+{
+  "userId": "childTeamSingleId",
+  "type": "circle"
+}
+```
+
+| Parameter | Type   | Required | Description                                                                 |
+|-----------|--------|----------|-----------------------------------------------------------------------------|
+| `userId`  | string | yes      | The Nextcloud user ID, or (for `type: circle`) the single ID of the team to nest |
+| `type`    | string | no       | `user` (default) or `circle`. `circle` adds another team as a member.       |
+
+A nested team is returned with `userType: 16` / `userTypeName: "Circle"` in the members list.
 
 **Response** `201`
 ```json

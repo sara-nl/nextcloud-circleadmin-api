@@ -70,7 +70,10 @@ class CircleApiController extends OCSController {
         // Get extra options from request params (not method params to avoid Dispatcher issues)
         $params = $this->request->getParams();
         $description = isset($params["desc"]) ? (string)$params["desc"] : null;
-        $federated = !empty($params["federated"]);
+        // `federated` is applied once, via $configFlags below (CFG_FEDERATED).
+        // Keep the base config non-federated (CFG_LOCAL) so there is no redundant
+        // double-write; an explicit federated:true is then applied as a flag.
+        $federated = false;
         $appManaged = !empty($params["appManaged"]);
         // Role of the given owner in an app-managed team: moderator (default),
         // admin or member. Ignored for regular teams.
@@ -80,8 +83,12 @@ class CircleApiController extends OCSController {
         $known = ['visible', 'open', 'invite', 'request', 'friend', 'protected', 'local', 'federated', 'mountpoint'];
         $configFlags = [];
         foreach ($known as $flag) {
-            if (array_key_exists($flag, $params)) {
-                $configFlags[$flag] = filter_var($params[$flag], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool)$params[$flag];
+            // On create, only an explicit truthy flag is a change worth applying.
+            // A fresh circle has none of these user-settable flags set, so a false
+            // value is a no-op; including it would force a needless config update.
+            if (array_key_exists($flag, $params)
+                && (filter_var($params[$flag], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool)$params[$flag])) {
+                $configFlags[$flag] = true;
             }
         }
         // For app-managed teams the app itself is the owner, so an owner in the

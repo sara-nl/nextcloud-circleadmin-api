@@ -44,6 +44,21 @@ class CirclesAdminService {
         return Server::get(FederatedUserService::class);
     }
 
+    /**
+     * Probe that makes every circle visible to getCircle/getCircles, including
+     * system, single, hidden, backend and app-managed circles. Needed because a
+     * bare getCircle() does not return e.g. a freshly-created or app-managed
+     * circle in the super/occ session, which otherwise throws CircleNotFound.
+     */
+    private function systemProbe(): CircleProbe {
+        $probe = new CircleProbe();
+        $probe->includeSystemCircles()
+               ->includeSingleCircles()
+               ->includeHiddenCircles()
+               ->includeBackendCircles();
+        return $probe;
+    }
+
     private function roleLevel(string $role): int {
         return match (strtolower($role)) {
             'member' => Member::LEVEL_MEMBER,
@@ -101,23 +116,32 @@ class CirclesAdminService {
 
     public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = []): array {
         if ($appManaged) {
-            $data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role);
-            return empty($configFlags) ? $data : $this->setCircleConfig($data['id'], $configFlags);
+            return $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags);
+        }
+
+        // Base config: local (CFG_LOCAL) unless federated is requested. Any other
+        // requested flags are OR-ed in here in the same write, so we never have to
+        // re-load the just-created circle in a second session (which is not yet
+        // reliably visible and caused "Circle not found").
+        $config = 4096;
+        foreach ($configFlags as $flag => $enabled) {
+            if ($enabled) {
+                $config |= $this->configFlagBit((string)$flag);
+            }
         }
 
         $this->circlesManager->startSuperSession();
         $this->circlesManager->startAppSession('circlesadmin');
-        $circleId = null;
         try {
             $owner = $this->circlesManager->getFederatedUser($ownerUserId, Member::TYPE_USER);
             $circle = $this->circlesManager->createCircle($name, $owner);
             $circleId = $circle->getSingleId();
 
-            // Fix config: appSession creates with config=2 (personal), reset to 0 (open)
-            // Also set description if provided
+            // Fix config: appSession creates with config=2 (personal); reset to the
+            // computed config (local + any requested flags). Also set description.
             $qb = $this->db->getQueryBuilder();
             $qb->update("circles_circle")
-                ->set("config", $qb->createNamedParameter($federated ? 0 : 4096, IQueryBuilder::PARAM_INT))
+                ->set("config", $qb->createNamedParameter($config, IQueryBuilder::PARAM_INT))
                 ->where($qb->expr()->eq("unique_id", $qb->createNamedParameter($circleId)));
             if ($description !== null && $description !== "") {
                 $qb->set("description", $qb->createNamedParameter($description));
@@ -126,18 +150,14 @@ class CirclesAdminService {
 
             $data = $this->formatCircle($circle);
             $data['description'] = $description ?? '';
-            $data['config'] = $federated ? 0 : 4096;
+            $data['config'] = $config;
+            $data['configFlags'] = $this->configFlagNames($config);
+            $data['federated'] = ($config & Circle::CFG_FEDERATED) !== 0;
+            $data['appManaged'] = ($config & Circle::CFG_APP) !== 0;
+            return $data;
         } finally {
             $this->stopSession();
         }
-
-        // Apply any requested config flags (e.g. federated) via the supported
-        // updateConfig path, once the base circle exists.
-        if (!empty($configFlags) && $circleId !== null) {
-            $data = $this->setCircleConfig($circleId, $configFlags);
-            $data['description'] = $description ?? '';
-        }
-        return $data;
     }
 
     /**
@@ -151,7 +171,16 @@ class CirclesAdminService {
      * gets the edit/settings UI. Pass an empty string for a team with no human
      * manager.
      */
-    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator'): array {
+    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = []): array {
+        // Bits for any requested flags, OR-ed into the config in the same write as
+        // CFG_APP below, so we never re-load the circle in a separate session.
+        $flagBits = 0;
+        foreach ($configFlags as $flag => $enabled) {
+            if ($enabled) {
+                $flagBits |= $this->configFlagBit((string)$flag);
+            }
+        }
+
         $this->circlesManager->startSuperSession();
         // startAppSession sets a "current app" patron so member operations
         // (createCircle owner, addMember) have a valid invitedBy context.
@@ -165,11 +194,19 @@ class CirclesAdminService {
             // Lock the team from the front-end: sets CFG_APP.
             $this->circlesManager->flagAsAppManaged($circleId, true);
 
-            if ($description !== null && $description !== '') {
+            if (($description !== null && $description !== '') || $flagBits !== 0) {
                 $qb = $this->db->getQueryBuilder();
-                $qb->update('circles_circle')
-                    ->set('description', $qb->createNamedParameter($description))
-                    ->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
+                $qb->update('circles_circle');
+                if ($flagBits !== 0) {
+                    // Keep CFG_APP (just set by flagAsAppManaged) and OR in the flags.
+                    $qb->set('config', $qb->createNamedParameter(
+                        Circle::CFG_APP | $flagBits, IQueryBuilder::PARAM_INT
+                    ));
+                }
+                if ($description !== null && $description !== '') {
+                    $qb->set('description', $qb->createNamedParameter($description));
+                }
+                $qb->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
                 $qb->executeStatement();
             }
 
@@ -206,7 +243,7 @@ class CirclesAdminService {
             }
             $this->circlesManager->stopSession();
             $this->circlesManager->startSuperSession();
-            $circle = $this->circlesManager->getCircle($circleId);
+            $circle = $this->circlesManager->getCircle($circleId, $this->systemProbe());
             $data = $this->formatCircle($circle);
             $data['description'] = $circle->getDescription();
             return $data;
@@ -238,13 +275,13 @@ class CirclesAdminService {
         try {
             $this->circlesManager->startSuperSession(true);
             $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
-            $circle = $this->circlesManager->getCircle($circleId);
+            $circle = $this->circlesManager->getCircle($circleId, $this->systemProbe());
             $circle->setConfig($config);
             $this->circlesManager->updateConfig($circle);
             $this->circlesManager->stopSession();
 
             $this->circlesManager->startSuperSession();
-            $circle = $this->circlesManager->getCircle($circleId);
+            $circle = $this->circlesManager->getCircle($circleId, $this->systemProbe());
             $data = $this->formatCircle($circle);
             $data['description'] = $circle->getDescription();
             return $data;
@@ -365,7 +402,7 @@ class CirclesAdminService {
      * @throws \InvalidArgumentException if the member is not part of the circle
      */
     private function assertMemberInCircle(string $circleId, string $memberId): void {
-        $circle = $this->circlesManager->getCircle($circleId);
+        $circle = $this->circlesManager->getCircle($circleId, $this->systemProbe());
         foreach ($circle->getMembers() as $member) {
             if ($member->getId() === $memberId) {
                 return;

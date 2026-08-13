@@ -57,7 +57,7 @@ $endpoints = [
                     ['<flag>', 'body', 'Any config flag (federated, visible, open, ...) as true/false.'],
                 ],
                 'body' => "{\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"desc\": \"Optional\",\n  \"federated\": true\n}",
-                'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"config\": 32768,\n  \"configFlags\": [\"federated\"],\n  \"appManaged\": false,\n  \"federated\": true\n}",
+                'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"config\": 36864,\n  \"configFlags\": [\"local\", \"federated\"],\n  \"appManaged\": false,\n  \"federated\": true\n}",
             ],
             [
                 'method' => 'PUT', 'path' => '/circles/{circleId}',

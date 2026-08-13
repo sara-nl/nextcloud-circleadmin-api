@@ -124,12 +124,14 @@ POST /circles
 | `name`       | string | yes      | Circle name (min 3 characters)           |
 | `owner`      | string | no       | User ID of owner. Defaults to admin user |
 | `desc`       | string | no       | Circle description                       |
-| `federated`  | bool   | no       | `true` for federated circle (config=0). Default: local (config=4096) |
+| `federated`  | bool   | no       | `true` enables the federated flag on the new team. Default: local. |
 | `appManaged` | bool   | no       | `true` creates an **app-managed (locked) team** — see [App-managed teams](#app-managed-locked-teams) |
 | `role`       | string | no       | For app-managed teams only: role of the given `owner` — `moderator` (default), `admin`, or `member` |
-| *config flags* | bool | no       | Any [config flag](#team-configuration-flags) can be set on creation, e.g. `federated`, `visible`, `open` |
+| *config flags* | bool | no       | Any [config flag](#team-configuration-flags) can be enabled on creation, e.g. `federated`, `visible`, `open`. Only flags sent as `true` are applied; a flag sent as `false` (or omitted) is a no-op. |
 
 > **Note**: The description field is named `desc` (not `description`) due to a Nextcloud OCS framework limitation.
+
+> **Note**: Config flags are applied atomically as part of the create, so a single request can create a federated (or otherwise configured) team, including app-managed teams.
 
 **Response** `201`
 ```json
@@ -140,10 +142,10 @@ POST /circles
       "name": "New Circle",
       "owner": "john",
       "memberCount": 1,
-      "config": 0,
-      "configFlags": [],
+      "config": 36864,
+      "configFlags": ["local", "federated"],
       "appManaged": false,
-      "federated": false,
+      "federated": true,
       "source": 16,
       "description": "Optional description"
     }

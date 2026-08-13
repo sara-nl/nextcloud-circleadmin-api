@@ -358,16 +358,34 @@ class CirclesAdminService {
         }
     }
 
-    public function addMember(string $circleId, string $userId): array {
+    /**
+     * Add a member to a team. $type selects what kind of entity is added:
+     * 'user' (default) adds a Nextcloud account by user ID; 'circle' adds another
+     * team as a member (nested teams), where $memberId is that team's single ID.
+     *
+     * @throws \InvalidArgumentException on an unknown type
+     */
+    public function addMember(string $circleId, string $memberId, string $type = 'user'): array {
+        $memberType = $this->memberType($type);
         try {
             $this->circlesManager->startSuperSession(true);
             $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
-            $federatedUser = $this->circlesManager->getFederatedUser($userId, Member::TYPE_USER);
+            $federatedUser = $this->circlesManager->getFederatedUser($memberId, $memberType);
             $member = $this->circlesManager->addMember($circleId, $federatedUser);
             return $this->formatMember($member);
         } finally {
             $this->stopSession();
         }
+    }
+
+    private function memberType(string $type): int {
+        return match (strtolower(trim($type))) {
+            'user' => Member::TYPE_USER,
+            'circle', 'team' => Member::TYPE_CIRCLE,
+            default => throw new \InvalidArgumentException(
+                "Unknown member type: $type. Allowed: user, circle."
+            ),
+        };
     }
 
     public function removeMember(string $circleId, string $memberId): void {
@@ -459,7 +477,7 @@ class CirclesAdminService {
     }
 
     private function formatMember(Member $member): array {
-        return [
+        $data = [
             'id' => $member->getId(),
             'singleId' => $member->getSingleId(),
             'userId' => $member->getUserId(),
@@ -471,6 +489,18 @@ class CirclesAdminService {
             'userType' => $member->getUserType(),
             'userTypeName' => $this->userTypeName($member->getUserType()),
         ];
+
+        // When the member is another team (nested team), expose it explicitly
+        // under `circle` instead of leaving the team ID/name buried in the
+        // user-oriented fields. `singleId` is that team's ID.
+        if ($member->getUserType() === Member::TYPE_CIRCLE) {
+            $data['circle'] = [
+                'id' => $member->getSingleId(),
+                'name' => $member->getDisplayName(),
+            ];
+        }
+
+        return $data;
     }
 
     /**

@@ -48,11 +48,17 @@ class MemberApiController extends OCSController {
      * @NoCSRFRequired
      */
     public function add(string $circleId, string $userId): DataResponse {
+        // Member type: 'user' (default) adds a Nextcloud account; 'circle' nests
+        // another team as a member (userId is then that team's single ID).
+        $params = $this->request->getParams();
+        $type = isset($params['type']) ? (string)$params['type'] : 'user';
         try {
             return new DataResponse(
-                $this->service->addMember($circleId, $userId),
+                $this->service->addMember($circleId, $userId, $type),
                 Http::STATUS_CREATED
             );
+        } catch (\InvalidArgumentException $e) {
+            return new DataResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
         } catch (\Exception $e) {
             $this->logger->error('circlesadmin: add member failed for ' . $circleId . '/' . $userId . ': ' . $e->getMessage(), ['exception' => $e]);
             return new DataResponse(

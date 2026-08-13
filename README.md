@@ -346,6 +346,7 @@ All member endpoints return members with these fields:
 | `statusName`   | string | Friendly status — an invited-but-not-yet-active member reads as `Invited` instead of an empty/unknown value |
 | `userType`     | int    | Member type (1=User, 2=Group, 16=Circle, etc.) |
 | `userTypeName` | string | Human-readable type name                   |
+| `circle`       | object | Present only when the member is a nested team: `{ "id": "<team single ID>", "name": "<team name>" }`. Use this instead of guessing the team from `userId`/`singleId`. |
 
 **User types**:
 
@@ -397,6 +398,8 @@ GET /circles/{circleId}/members
 POST /circles/{circleId}/members
 ```
 
+Adds a member to a team. By default a Nextcloud user is added; pass `type: "circle"` to add another team as a member (nested teams).
+
 **Body**
 ```json
 {
@@ -404,11 +407,22 @@ POST /circles/{circleId}/members
 }
 ```
 
-| Parameter | Type   | Required | Description          |
-|-----------|--------|----------|----------------------|
-| `userId`  | string | yes      | Nextcloud user ID    |
+Nest a team inside another team:
+```json
+{
+  "userId": "childTeamSingleId",
+  "type": "circle"
+}
+```
 
-**Response** `201`
+| Parameter | Type   | Required | Description                                                                 |
+|-----------|--------|----------|-----------------------------------------------------------------------------|
+| `userId`  | string | yes      | The Nextcloud user ID, or (for `type: circle`) the single ID of the team to nest |
+| `type`    | string | no       | `user` (default) or `circle`. `circle` adds another team as a member.       |
+
+A nested team is returned with `userType: 16` / `userTypeName: "Circle"` and an explicit `circle` object identifying which team it is.
+
+**Response** `201` (adding a user)
 ```json
 {
   "ocs": {
@@ -428,7 +442,33 @@ POST /circles/{circleId}/members
 }
 ```
 
-**Errors**: `400` User not found, already a member, or circle not found
+**Response** `201` (adding a team with `type: "circle"`)
+```json
+{
+  "ocs": {
+    "data": {
+      "id": "mem456",
+      "singleId": "childTeamSingleId",
+      "userId": "Design Team",
+      "displayName": "Design Team",
+      "level": 1,
+      "levelName": "Member",
+      "status": "Member",
+      "statusName": "Member",
+      "userType": 16,
+      "userTypeName": "Circle",
+      "circle": {
+        "id": "childTeamSingleId",
+        "name": "Design Team"
+      }
+    }
+  }
+}
+```
+
+A nested team can be promoted like any member: `PUT /circles/{id}/members/{memberId}/level` with `{"level": 4}` (Moderator) or `8` (Admin).
+
+**Errors**: `400` User/team not found, already a member, or circle not found
 
 ---
 

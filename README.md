@@ -45,6 +45,9 @@ Returns all circles on the instance (including system, hidden, and backend circl
         "owner": "john",
         "memberCount": 3,
         "config": 0,
+        "configFlags": [],
+        "appManaged": false,
+        "federated": false,
         "source": 16
       }
     ]
@@ -71,7 +74,10 @@ Returns circle info including description and all members.
       "name": "My Circle",
       "owner": "john",
       "memberCount": 3,
-      "config": 0,
+      "config": 24,
+      "configFlags": ["visible", "open"],
+      "appManaged": false,
+      "federated": false,
       "source": 16,
       "description": "A description for the circle",
       "members": [
@@ -83,6 +89,7 @@ Returns circle info including description and all members.
           "level": 9,
           "levelName": "Owner",
           "status": "Member",
+          "statusName": "Member",
           "userType": 1,
           "userTypeName": "User"
         }
@@ -112,12 +119,15 @@ POST /circles
 }
 ```
 
-| Parameter   | Type   | Required | Description                              |
-|-------------|--------|----------|------------------------------------------|
-| `name`      | string | yes      | Circle name (min 3 characters)           |
-| `owner`     | string | no       | User ID of owner. Defaults to admin user |
-| `desc`      | string | no       | Circle description                       |
-| `federated` | bool   | no       | `true` for federated circle (config=0). Default: local (config=4096) |
+| Parameter    | Type   | Required | Description                              |
+|--------------|--------|----------|------------------------------------------|
+| `name`       | string | yes      | Circle name (min 3 characters)           |
+| `owner`      | string | no       | User ID of owner. Defaults to admin user |
+| `desc`       | string | no       | Circle description                       |
+| `federated`  | bool   | no       | `true` for federated circle (config=0). Default: local (config=4096) |
+| `appManaged` | bool   | no       | `true` creates an **app-managed (locked) team** — see [App-managed teams](#app-managed-locked-teams) |
+| `role`       | string | no       | For app-managed teams only: role of the given `owner` — `moderator` (default), `admin`, or `member` |
+| *config flags* | bool | no       | Any [config flag](#team-configuration-flags) can be set on creation, e.g. `federated`, `visible`, `open` |
 
 > **Note**: The description field is named `desc` (not `description`) due to a Nextcloud OCS framework limitation.
 
@@ -131,12 +141,23 @@ POST /circles
       "owner": "john",
       "memberCount": 1,
       "config": 0,
+      "configFlags": [],
+      "appManaged": false,
+      "federated": false,
       "source": 16,
       "description": "Optional description"
     }
   }
 }
 ```
+
+Every circle object now also carries:
+
+| Field         | Type   | Description                                                        |
+|---------------|--------|-------------------------------------------------------------------|
+| `configFlags` | array  | Readable list of the user-settable flags currently set (see below) |
+| `appManaged`  | bool   | `true` if the team is locked from the Nextcloud UI (`CFG_APP`)     |
+| `federated`   | bool   | `true` if federated members can be added (`CFG_FEDERATED`)         |
 
 **Errors**: `400` Invalid name or user not found
 
@@ -175,6 +196,9 @@ At least one parameter must be provided.
       "owner": "john",
       "memberCount": 3,
       "config": 0,
+      "configFlags": [],
+      "appManaged": false,
+      "federated": false,
       "source": 16,
       "description": "A description for the circle"
     }
@@ -207,6 +231,99 @@ Permanently deletes a circle regardless of who owns it.
 
 **Errors**: `400` Circle not found
 
+> App-managed teams (`CFG_APP`) cannot normally be deleted through the OCS API. This endpoint handles that automatically: it clears the app-managed flag first, then deletes the team.
+
+---
+
+## Team configuration (flags)
+
+A team's behaviour is controlled by a bitmask (`config`). This API exposes the user-settable flags by name so you don't have to work with raw bit values.
+
+### Update config flags
+
+```
+PUT /circles/{circleId}/config
+```
+
+Send one or more flag names with a truthy (`1`, `true`) or falsy (`0`, `false`) value. Flags not mentioned are left unchanged. You can set and unset several flags in a single request.
+
+**Body**
+```json
+{
+  "federated": true,
+  "visible": true,
+  "local": false
+}
+```
+
+**Available flags**
+
+| Flag         | Bit    | Nextcloud UI setting                                   | Meaning                                                        |
+|--------------|--------|--------------------------------------------------------|----------------------------------------------------------------|
+| `visible`    | 8      | Zichtbaar voor iedereen / *Visible to everyone*        | Team is found in search; otherwise you must know its name      |
+| `open`       | 16     | Iedereen kan lid worden / *Anyone can join*            | Anyone can join without an invitation                          |
+| `invite`     | 32     | Leden moeten de uitnodiging accepteren                 | Adding a member creates an invitation they must accept         |
+| `request`    | 64     | Lidmaatschap moet bevestigd door een moderator         | Join requests need moderator approval                          |
+| `friend`     | 128    | Leden kunnen anderen uitnodigen                        | Members may invite others                                      |
+| `protected`  | 256    | Wachtwoordbeveiliging afdwingen voor **gedeelde bestanden** | Enforces a password on **file shares** made with this team — **not** a password to join the team (see note) |
+| `local`      | 4096   | *(local team)*                                         | Team stays on this instance only; the opposite of `federated`  |
+| `federated`  | 32768  | Sta federatieleden toe / *Allow federated members*     | **Lets federated users be added via the Contacts app**         |
+| `mountpoint` | 65536  | *(no UI checkbox)*                                     | Generates a Files folder for the team                          |
+
+**Response** `200` — the updated circle object (including the new `configFlags` and `federated` fields).
+
+**Errors**: `400` Unknown flag name, circle not found, or no flags provided
+
+> **About `protected`**: this maps to Nextcloud's *"Enforce password protection for files shared with this team"*, so its effect is only visible when you share a file with the team. It is **not** a password to join the team, and no team password is stored. The related *"Use a single password for all shares"* option is a separate setting that this API does not manage.
+
+> **`local` vs `federated`**: these are opposites. For a genuinely federated team, set `federated=true` and `local=false`. Nextcloud may re-assert `local` if you enable `federated` without disabling it.
+
+### Enable federated members (common case)
+
+To let a team accept federated users from other Nextcloud instances via the Contacts app:
+
+```bash
+# On an existing team
+curl -u admin:password -H "OCS-APIRequest: true" -H "Accept: application/json" \
+  -X PUT ".../api/v1/circles/{circleId}/config" \
+  -d '{"federated": true, "local": false}'
+
+# Or directly at creation
+curl -u admin:password -H "OCS-APIRequest: true" -H "Accept: application/json" \
+  -X POST ".../api/v1/circles" \
+  -d '{"name": "Federated Project", "owner": "alice", "federated": true}'
+```
+
+---
+
+## App-managed (locked) teams
+
+An **app-managed team** is owned by the Circles app itself and flagged with `CFG_APP` (131072). Regular users — including admins — **cannot edit its settings, rename it, or delete it from the Nextcloud Teams UI**. Members are managed only through this admin API. This mirrors how Nextcloud's group-backed system circles work.
+
+Create one by passing `appManaged: true`:
+
+```json
+{
+  "name": "Managed Team",
+  "owner": "alice",
+  "appManaged": true,
+  "role": "moderator"
+}
+```
+
+- **`owner` is optional.** If given, that user is added to the team at the level set by `role`; if omitted, only the app owns the team and no one can manage it from the UI.
+- **`role`** controls what the given user can do in the UI:
+
+  | `role`      | Level | Can manage members (UI) | Can edit settings / delete (UI) |
+  |-------------|-------|-------------------------|---------------------------------|
+  | `moderator` | 4 (default) | ✅ yes             | ❌ no                            |
+  | `admin`     | 8     | ✅ yes                   | ✅ yes (team is no longer fully locked) |
+  | `member`    | 1     | ❌ no                    | ❌ no                            |
+
+**Response** `201` includes `"appManaged": true`.
+
+Member management (list / add / remove / set level) and deletion all work as normal through this API — the lock only applies to the Nextcloud front-end.
+
 ---
 
 ## Members
@@ -223,7 +340,8 @@ All member endpoints return members with these fields:
 | `displayName`  | string | Display name                               |
 | `level`        | int    | Permission level (1/4/8/9)                 |
 | `levelName`    | string | Human-readable level name                  |
-| `status`       | string | Membership status                          |
+| `status`       | string | Raw membership status from Circles         |
+| `statusName`   | string | Friendly status — an invited-but-not-yet-active member reads as `Invited` instead of an empty/unknown value |
 | `userType`     | int    | Member type (1=User, 2=Group, 16=Circle, etc.) |
 | `userTypeName` | string | Human-readable type name                   |
 
@@ -258,6 +376,7 @@ GET /circles/{circleId}/members
         "level": 9,
         "levelName": "Owner",
         "status": "Member",
+        "statusName": "Member",
         "userType": 1,
         "userTypeName": "User"
       }
@@ -299,6 +418,7 @@ POST /circles/{circleId}/members
       "level": 1,
       "levelName": "Member",
       "status": "Member",
+      "statusName": "Member",
       "userType": 1,
       "userTypeName": "User"
     }
@@ -405,5 +525,32 @@ curl -u $AUTH $HEADERS -X PUT "$BASE/circles/{circleId}/members/{memberId}/level
 curl -u $AUTH $HEADERS -X DELETE "$BASE/circles/{circleId}/members/{aliceMemberId}"
 
 # 7. Delete circle
+curl -u $AUTH $HEADERS -X DELETE "$BASE/circles/{circleId}"
+```
+
+### Example: federated team
+
+```bash
+# Create a team that accepts federated members, with alice as owner
+curl -u $AUTH $HEADERS -X POST "$BASE/circles" \
+  -d '{"name":"Federated Team","owner":"alice","federated":true}'
+
+# Or enable federation on an existing team
+curl -u $AUTH $HEADERS -X PUT "$BASE/circles/{circleId}/config" \
+  -d '{"federated":true,"local":false}'
+```
+
+### Example: app-managed (locked) team
+
+```bash
+# Create a locked team; alice becomes a moderator (can manage members,
+# but cannot change settings or delete the team from the UI)
+curl -u $AUTH $HEADERS -X POST "$BASE/circles" \
+  -d '{"name":"Managed Team","owner":"alice","appManaged":true,"role":"moderator"}'
+
+# Members are still managed through the API as usual
+curl -u $AUTH $HEADERS -X POST "$BASE/circles/{circleId}/members" -d '{"userId":"bob"}'
+
+# Deletion works too — the API clears the lock automatically
 curl -u $AUTH $HEADERS -X DELETE "$BASE/circles/{circleId}"
 ```

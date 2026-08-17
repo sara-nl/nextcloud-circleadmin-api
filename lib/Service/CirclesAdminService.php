@@ -114,9 +114,10 @@ class CirclesAdminService {
         }
     }
 
-    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = []): array {
+    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = [], array $members = []): array {
         if ($appManaged) {
-            return $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags);
+            $data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags);
+            return $this->addInitialMembers($data, $members);
         }
 
         // Base config: local (CFG_LOCAL) unless federated is requested. Any other
@@ -154,10 +155,50 @@ class CirclesAdminService {
             $data['configFlags'] = $this->configFlagNames($config);
             $data['federated'] = ($config & Circle::CFG_FEDERATED) !== 0;
             $data['appManaged'] = ($config & Circle::CFG_APP) !== 0;
-            return $data;
         } finally {
             $this->stopSession();
         }
+
+        return $this->addInitialMembers($data, $members);
+    }
+
+    /**
+     * Add the members requested at create time (best-effort). Each entry is
+     * ['userId' => ..., 'type' => 'user'|'circle', 'level' => 1|4|8|9]. The team
+     * is already created; a member that cannot be added is reported under
+     * `memberErrors` rather than failing the whole request. Successfully added
+     * members (with their assigned level) are returned under `members`.
+     *
+     * @param array<int, array{userId: string, type: string, level: int}> $members
+     */
+    private function addInitialMembers(array $data, array $members): array {
+        if (empty($members)) {
+            return $data;
+        }
+        $circleId = $data['id'];
+        $added = [];
+        $errors = [];
+        foreach ($members as $m) {
+            $userId = $m['userId'] ?? '';
+            $type = $m['type'] ?? 'user';
+            $level = (int)($m['level'] ?? Member::LEVEL_MEMBER);
+            try {
+                $member = $this->addMember($circleId, $userId, $type);
+                if ($level !== Member::LEVEL_MEMBER) {
+                    $this->setMemberLevel($circleId, $member['id'], $level);
+                    $member['level'] = $level;
+                    $member['levelName'] = $this->levelName($level);
+                }
+                $added[] = $member;
+            } catch (\Throwable $e) {
+                $errors[] = ['userId' => $userId, 'type' => $type, 'message' => $e->getMessage()];
+            }
+        }
+        $data['members'] = $added;
+        if (!empty($errors)) {
+            $data['memberErrors'] = $errors;
+        }
+        return $data;
     }
 
     /**

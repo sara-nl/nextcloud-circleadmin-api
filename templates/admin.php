@@ -54,9 +54,10 @@ $endpoints = [
                     ['federated', 'body', 'true for a federated team.'],
                     ['appManaged', 'body', 'true for an app-managed (locked) team.'],
                     ['role', 'body', 'App-managed only: role of owner: moderator (default), admin, member.'],
+                    ['members', 'body', 'Optional array to populate the team: each {userId, type: user|circle, level: 1/4/8/9}. Best-effort; failures reported under memberErrors. On an app-managed team, avoid level 9 (Owner) — it transfers ownership away from the app.'],
                     ['<flag>', 'body', 'Any config flag (federated, visible, open, ...) as true/false.'],
                 ],
-                'body' => "{\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"desc\": \"Optional\",\n  \"federated\": true\n}",
+                'body' => "{\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"desc\": \"Optional\",\n  \"members\": [\n    { \"userId\": \"childTeamId\", \"type\": \"circle\", \"level\": 4 }\n  ]\n}",
                 'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"config\": 36864,\n  \"configFlags\": [\"local\", \"federated\"],\n  \"appManaged\": false,\n  \"federated\": true\n}",
             ],
             [

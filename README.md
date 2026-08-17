@@ -127,11 +127,35 @@ POST /circles
 | `federated`  | bool   | no       | `true` enables the federated flag on the new team. Default: local. |
 | `appManaged` | bool   | no       | `true` creates an **app-managed (locked) team** — see [App-managed teams](#app-managed-locked-teams) |
 | `role`       | string | no       | For app-managed teams only: role of the given `owner` — `moderator` (default), `admin`, or `member` |
+| `members`    | array  | no       | Members to add to the new team in the same request (see below) |
 | *config flags* | bool | no       | Any [config flag](#team-configuration-flags) can be enabled on creation, e.g. `federated`, `visible`, `open`. Only flags sent as `true` are applied; a flag sent as `false` (or omitted) is a no-op. |
+
+**Adding members at creation.** Pass a `members` array to create the team and populate it in one request. Each entry:
+
+| Field    | Type   | Required | Description                                                    |
+|----------|--------|----------|----------------------------------------------------------------|
+| `userId` | string | yes      | User ID, or (for `type: circle`) the single ID of the team to nest |
+| `type`   | string | no       | `user` (default) or `circle`                                   |
+| `level`  | int    | no       | `1` Member (default), `4` Moderator, `8` Admin, `9` Owner      |
+
+Adding members is **best-effort**: the team is still created if a member fails, and each failure is reported under `memberErrors` in the response. Successfully added members are returned under `members`.
+
+> ⚠️ On an **app-managed** team, do not use `"level": 9` (Owner) — it transfers ownership away from the app. See [App-managed teams](#app-managed-locked-teams).
+
+```json
+{
+  "name": "Example Team in Team",
+  "owner": "alice",
+  "desc": "A team with a nested team",
+  "members": [
+    { "userId": "childTeamSingleId", "type": "circle", "level": 4 }
+  ]
+}
+```
 
 > **Note**: The description field is named `desc` (not `description`) due to a Nextcloud OCS framework limitation.
 
-> **Note**: Config flags are applied atomically as part of the create, so a single request can create a federated (or otherwise configured) team, including app-managed teams.
+> **Note**: Config flags and members are applied as part of the create, so a single request can create a federated (or otherwise configured) team and populate it with users and nested teams at chosen levels.
 
 **Response** `201`
 ```json
@@ -325,6 +349,8 @@ Create one by passing `appManaged: true`:
 **Response** `201` includes `"appManaged": true`.
 
 Member management (list / add / remove / set level) and deletion all work as normal through this API — the lock only applies to the Nextcloud front-end.
+
+> ⚠️ **Do not give a human member Owner (level 9) on an app-managed team.** An app-managed team is owned by the Circles app; Circles allows only one owner, so promoting a user to level 9 (via `setMemberLevel` or a `members` entry with `"level": 9`) **transfers ownership away from the app** — the app is demoted to Admin and the team is no longer truly app-managed. Use Admin (8) as the highest level for human managers.
 
 ---
 

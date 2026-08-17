@@ -91,13 +91,30 @@ class CircleApiController extends OCSController {
                 $configFlags[$flag] = true;
             }
         }
+        // Optional members to add to the new team in the same request. Each item:
+        // { "userId": "<id>", "type": "user"|"circle" (default user), "level": 1|4|8|9 (default 1) }.
+        // Adding members is best-effort: the team is still created if a member fails,
+        // and failures are reported in the response under "memberErrors".
+        $members = [];
+        if (isset($params['members']) && is_array($params['members'])) {
+            foreach ($params['members'] as $m) {
+                if (!is_array($m) || !isset($m['userId'])) {
+                    continue;
+                }
+                $members[] = [
+                    'userId' => (string)$m['userId'],
+                    'type' => isset($m['type']) ? (string)$m['type'] : 'user',
+                    'level' => isset($m['level']) ? (int)$m['level'] : 1,
+                ];
+            }
+        }
         // For app-managed teams the app itself is the owner, so an owner in the
         // body is optional (it becomes the human manager). Otherwise default
         // the owner to the calling admin.
         $ownerUserId = $appManaged ? $owner : ($owner ?: $this->userId);
         try {
             return new DataResponse(
-                $this->service->createCircle($name, $ownerUserId, $description, $federated, $appManaged, $role, $configFlags),
+                $this->service->createCircle($name, $ownerUserId, $description, $federated, $appManaged, $role, $configFlags, $members),
                 Http::STATUS_CREATED
             );
         } catch (\Exception $e) {

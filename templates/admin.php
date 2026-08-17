@@ -49,7 +49,8 @@ $endpoints = [
                 'desc' => 'Creates a team. Pass config flags to set them at creation. Use appManaged for a locked team.',
                 'params' => [
                     ['name', 'body', 'Team name, min 3 characters. Required.'],
-                    ['owner', 'body', 'Owner user ID. Defaults to the admin user. Optional (becomes moderator when appManaged).'],
+                    ['owner', 'body', 'Owner of the team: a user ID, or (with owner_type=circle) a team single ID. Defaults to the admin user. Optional (becomes the role, e.g. moderator, when appManaged).'],
+                    ['owner_type', 'body', 'user (default) or circle. circle makes owner a team instead of a user.'],
                     ['desc', 'body', 'Description. Named desc, not description, due to an OCS framework limit.'],
                     ['federated', 'body', 'true for a federated team.'],
                     ['appManaged', 'body', 'true for an app-managed (locked) team.'],

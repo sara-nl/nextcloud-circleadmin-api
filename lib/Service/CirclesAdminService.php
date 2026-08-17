@@ -114,9 +114,9 @@ class CirclesAdminService {
         }
     }
 
-    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = [], array $members = []): array {
+    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = [], array $members = [], string $ownerType = 'user'): array {
         if ($appManaged) {
-            $data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags);
+            $data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags, $ownerType);
             return $this->addInitialMembers($data, $members);
         }
 
@@ -134,7 +134,8 @@ class CirclesAdminService {
         $this->circlesManager->startSuperSession();
         $this->circlesManager->startAppSession('circlesadmin');
         try {
-            $owner = $this->circlesManager->getFederatedUser($ownerUserId, Member::TYPE_USER);
+            // Owner can be a user (default) or another team (owner_type=circle).
+            $owner = $this->circlesManager->getFederatedUser($ownerUserId, $this->memberType($ownerType));
             $circle = $this->circlesManager->createCircle($name, $owner);
             $circleId = $circle->getSingleId();
 
@@ -210,9 +211,10 @@ class CirclesAdminService {
      * the UI without being able to change the team's settings. A 'moderator' or
      * 'member' can manage members but not edit/delete the team; an 'admin' also
      * gets the edit/settings UI. Pass an empty string for a team with no human
-     * manager.
+     * manager. The manager may be a user (default) or another team ($managerType
+     * = 'circle').
      */
-    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = []): array {
+    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = [], string $managerType = 'user'): array {
         // Bits for any requested flags, OR-ed into the config in the same write as
         // CFG_APP below, so we never re-load the circle in a separate session.
         $flagBits = 0;
@@ -252,7 +254,8 @@ class CirclesAdminService {
             }
 
             if ($managerUserId !== '') {
-                $manager = $this->circlesManager->getFederatedUser($managerUserId, Member::TYPE_USER);
+                // The manager can be a user (default) or another team (owner_type=circle).
+                $manager = $this->circlesManager->getFederatedUser($managerUserId, $this->memberType($managerType));
                 $member = $this->circlesManager->addMember($circleId, $manager);
                 $level = $this->roleLevel($role);
                 if ($level !== Member::LEVEL_MEMBER) {

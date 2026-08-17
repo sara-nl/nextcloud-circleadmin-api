@@ -108,13 +108,20 @@ class CircleApiController extends OCSController {
                 ];
             }
         }
+        // The owner can be a user (default) or another team. owner_type=circle means
+        // the `owner` value is a team's single ID. Ignored when owner defaults to
+        // the calling admin (no owner given).
+        $ownerType = isset($params['owner_type']) ? (string)$params['owner_type'] : 'user';
         // For app-managed teams the app itself is the owner, so an owner in the
         // body is optional (it becomes the human manager). Otherwise default
         // the owner to the calling admin.
         $ownerUserId = $appManaged ? $owner : ($owner ?: $this->userId);
+        if ($ownerUserId === $this->userId) {
+            $ownerType = 'user';
+        }
         try {
             return new DataResponse(
-                $this->service->createCircle($name, $ownerUserId, $description, $federated, $appManaged, $role, $configFlags, $members),
+                $this->service->createCircle($name, $ownerUserId, $description, $federated, $appManaged, $role, $configFlags, $members, $ownerType),
                 Http::STATUS_CREATED
             );
         } catch (\Exception $e) {

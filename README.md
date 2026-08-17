@@ -122,7 +122,8 @@ POST /circles
 | Parameter    | Type   | Required | Description                              |
 |--------------|--------|----------|------------------------------------------|
 | `name`       | string | yes      | Circle name (min 3 characters)           |
-| `owner`      | string | no       | User ID of owner. Defaults to admin user |
+| `owner`      | string | no       | Owner of the team: a user ID, or (with `owner_type: circle`) a team's single ID. Defaults to the admin user. |
+| `owner_type` | string | no       | `user` (default) or `circle`. `circle` makes the `owner` value a team instead of a user. |
 | `desc`       | string | no       | Circle description                       |
 | `federated`  | bool   | no       | `true` enables the federated flag on the new team. Default: local. |
 | `appManaged` | bool   | no       | `true` creates an **app-managed (locked) team** — see [App-managed teams](#app-managed-locked-teams) |
@@ -337,8 +338,20 @@ Create one by passing `appManaged: true`:
 }
 ```
 
-- **`owner` is optional.** If given, that user is added to the team at the level set by `role`; if omitted, only the app owns the team and no one can manage it from the UI.
-- **`role`** controls what the given user can do in the UI:
+- **`owner` is optional.** If given, that entity is added to the team at the level set by `role`; if omitted, only the app owns the team and no one can manage it from the UI.
+- **`owner_type`** (`user` default, or `circle`) sets whether `owner` is a user ID or another team's single ID. A team can therefore be managed by another team — the app owns the team and the given team is added as Moderator:
+
+```json
+{
+  "name": "Example Team",
+  "owner": "<managerTeamSingleId>",
+  "owner_type": "circle",
+  "appManaged": true,
+  "role": "moderator"
+}
+```
+
+- **`role`** controls what the given entity can do in the UI:
 
   | `role`      | Level | Can manage members (UI) | Can edit settings / delete (UI) |
   |-------------|-------|-------------------------|---------------------------------|

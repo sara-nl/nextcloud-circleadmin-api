@@ -114,9 +114,10 @@ class CirclesAdminService {
         }
     }
 
-    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = []): array {
+    public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = [], array $members = [], string $ownerType = 'user'): array {
         if ($appManaged) {
-            return $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags);
+            $data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags, $ownerType);
+            return $this->addInitialMembers($data, $members);
         }
 
         // Base config: local (CFG_LOCAL) unless federated is requested. Any other
@@ -133,7 +134,8 @@ class CirclesAdminService {
         $this->circlesManager->startSuperSession();
         $this->circlesManager->startAppSession('circlesadmin');
         try {
-            $owner = $this->circlesManager->getFederatedUser($ownerUserId, Member::TYPE_USER);
+            // Owner can be a user (default) or another team (owner_type=circle).
+            $owner = $this->circlesManager->getFederatedUser($ownerUserId, $this->memberType($ownerType));
             $circle = $this->circlesManager->createCircle($name, $owner);
             $circleId = $circle->getSingleId();
 
@@ -154,10 +156,50 @@ class CirclesAdminService {
             $data['configFlags'] = $this->configFlagNames($config);
             $data['federated'] = ($config & Circle::CFG_FEDERATED) !== 0;
             $data['appManaged'] = ($config & Circle::CFG_APP) !== 0;
-            return $data;
         } finally {
             $this->stopSession();
         }
+
+        return $this->addInitialMembers($data, $members);
+    }
+
+    /**
+     * Add the members requested at create time (best-effort). Each entry is
+     * ['userId' => ..., 'type' => 'user'|'circle', 'level' => 1|4|8|9]. The team
+     * is already created; a member that cannot be added is reported under
+     * `memberErrors` rather than failing the whole request. Successfully added
+     * members (with their assigned level) are returned under `members`.
+     *
+     * @param array<int, array{userId: string, type: string, level: int}> $members
+     */
+    private function addInitialMembers(array $data, array $members): array {
+        if (empty($members)) {
+            return $data;
+        }
+        $circleId = $data['id'];
+        $added = [];
+        $errors = [];
+        foreach ($members as $m) {
+            $userId = $m['userId'] ?? '';
+            $type = $m['type'] ?? 'user';
+            $level = (int)($m['level'] ?? Member::LEVEL_MEMBER);
+            try {
+                $member = $this->addMember($circleId, $userId, $type);
+                if ($level !== Member::LEVEL_MEMBER) {
+                    $this->setMemberLevel($circleId, $member['id'], $level);
+                    $member['level'] = $level;
+                    $member['levelName'] = $this->levelName($level);
+                }
+                $added[] = $member;
+            } catch (\Throwable $e) {
+                $errors[] = ['userId' => $userId, 'type' => $type, 'message' => $e->getMessage()];
+            }
+        }
+        $data['members'] = $added;
+        if (!empty($errors)) {
+            $data['memberErrors'] = $errors;
+        }
+        return $data;
     }
 
     /**
@@ -169,9 +211,10 @@ class CirclesAdminService {
      * the UI without being able to change the team's settings. A 'moderator' or
      * 'member' can manage members but not edit/delete the team; an 'admin' also
      * gets the edit/settings UI. Pass an empty string for a team with no human
-     * manager.
+     * manager. The manager may be a user (default) or another team ($managerType
+     * = 'circle').
      */
-    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = []): array {
+    private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = [], string $managerType = 'user'): array {
         // Bits for any requested flags, OR-ed into the config in the same write as
         // CFG_APP below, so we never re-load the circle in a separate session.
         $flagBits = 0;
@@ -211,7 +254,8 @@ class CirclesAdminService {
             }
 
             if ($managerUserId !== '') {
-                $manager = $this->circlesManager->getFederatedUser($managerUserId, Member::TYPE_USER);
+                // The manager can be a user (default) or another team (owner_type=circle).
+                $manager = $this->circlesManager->getFederatedUser($managerUserId, $this->memberType($managerType));
                 $member = $this->circlesManager->addMember($circleId, $manager);
                 $level = $this->roleLevel($role);
                 if ($level !== Member::LEVEL_MEMBER) {
@@ -358,16 +402,34 @@ class CirclesAdminService {
         }
     }
 
-    public function addMember(string $circleId, string $userId): array {
+    /**
+     * Add a member to a team. $type selects what kind of entity is added:
+     * 'user' (default) adds a Nextcloud account by user ID; 'circle' adds another
+     * team as a member (nested teams), where $memberId is that team's single ID.
+     *
+     * @throws \InvalidArgumentException on an unknown type
+     */
+    public function addMember(string $circleId, string $memberId, string $type = 'user'): array {
+        $memberType = $this->memberType($type);
         try {
             $this->circlesManager->startSuperSession(true);
             $this->circlesManager->startOccSession('', Member::TYPE_SINGLE, $circleId);
-            $federatedUser = $this->circlesManager->getFederatedUser($userId, Member::TYPE_USER);
+            $federatedUser = $this->circlesManager->getFederatedUser($memberId, $memberType);
             $member = $this->circlesManager->addMember($circleId, $federatedUser);
             return $this->formatMember($member);
         } finally {
             $this->stopSession();
         }
+    }
+
+    private function memberType(string $type): int {
+        return match (strtolower(trim($type))) {
+            'user' => Member::TYPE_USER,
+            'circle', 'team' => Member::TYPE_CIRCLE,
+            default => throw new \InvalidArgumentException(
+                "Unknown member type: $type. Allowed: user, circle."
+            ),
+        };
     }
 
     public function removeMember(string $circleId, string $memberId): void {
@@ -459,7 +521,7 @@ class CirclesAdminService {
     }
 
     private function formatMember(Member $member): array {
-        return [
+        $data = [
             'id' => $member->getId(),
             'singleId' => $member->getSingleId(),
             'userId' => $member->getUserId(),
@@ -471,6 +533,18 @@ class CirclesAdminService {
             'userType' => $member->getUserType(),
             'userTypeName' => $this->userTypeName($member->getUserType()),
         ];
+
+        // When the member is another team (nested team), expose it explicitly
+        // under `circle` instead of leaving the team ID/name buried in the
+        // user-oriented fields. `singleId` is that team's ID.
+        if ($member->getUserType() === Member::TYPE_CIRCLE) {
+            $data['circle'] = [
+                'id' => $member->getSingleId(),
+                'name' => $member->getDisplayName(),
+            ];
+        }
+
+        return $data;
     }
 
     /**

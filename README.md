@@ -122,16 +122,41 @@ POST /circles
 | Parameter    | Type   | Required | Description                              |
 |--------------|--------|----------|------------------------------------------|
 | `name`       | string | yes      | Circle name (min 3 characters)           |
-| `owner`      | string | no       | User ID of owner. Defaults to admin user |
+| `owner`      | string | no       | Owner of the team: a user ID, or (with `owner_type: circle`) a team's single ID. Defaults to the admin user. |
+| `owner_type` | string | no       | `user` (default) or `circle`. `circle` makes the `owner` value a team instead of a user. |
 | `desc`       | string | no       | Circle description                       |
 | `federated`  | bool   | no       | `true` enables the federated flag on the new team. Default: local. |
 | `appManaged` | bool   | no       | `true` creates an **app-managed (locked) team** — see [App-managed teams](#app-managed-locked-teams) |
 | `role`       | string | no       | For app-managed teams only: role of the given `owner` — `moderator` (default), `admin`, or `member` |
+| `members`    | array  | no       | Members to add to the new team in the same request (see below) |
 | *config flags* | bool | no       | Any [config flag](#team-configuration-flags) can be enabled on creation, e.g. `federated`, `visible`, `open`. Only flags sent as `true` are applied; a flag sent as `false` (or omitted) is a no-op. |
+
+**Adding members at creation.** Pass a `members` array to create the team and populate it in one request. Each entry:
+
+| Field    | Type   | Required | Description                                                    |
+|----------|--------|----------|----------------------------------------------------------------|
+| `userId` | string | yes      | User ID, or (for `type: circle`) the single ID of the team to nest |
+| `type`   | string | no       | `user` (default) or `circle`                                   |
+| `level`  | int    | no       | `1` Member (default), `4` Moderator, `8` Admin, `9` Owner      |
+
+Adding members is **best-effort**: the team is still created if a member fails, and each failure is reported under `memberErrors` in the response. Successfully added members are returned under `members`.
+
+> ⚠️ On an **app-managed** team, do not use `"level": 9` (Owner) — it transfers ownership away from the app. See [App-managed teams](#app-managed-locked-teams).
+
+```json
+{
+  "name": "Example Team in Team",
+  "owner": "alice",
+  "desc": "A team with a nested team",
+  "members": [
+    { "userId": "childTeamSingleId", "type": "circle", "level": 4 }
+  ]
+}
+```
 
 > **Note**: The description field is named `desc` (not `description`) due to a Nextcloud OCS framework limitation.
 
-> **Note**: Config flags are applied atomically as part of the create, so a single request can create a federated (or otherwise configured) team, including app-managed teams.
+> **Note**: Config flags and members are applied as part of the create, so a single request can create a federated (or otherwise configured) team and populate it with users and nested teams at chosen levels.
 
 **Response** `201`
 ```json
@@ -313,8 +338,20 @@ Create one by passing `appManaged: true`:
 }
 ```
 
-- **`owner` is optional.** If given, that user is added to the team at the level set by `role`; if omitted, only the app owns the team and no one can manage it from the UI.
-- **`role`** controls what the given user can do in the UI:
+- **`owner` is optional.** If given, that entity is added to the team at the level set by `role`; if omitted, only the app owns the team and no one can manage it from the UI.
+- **`owner_type`** (`user` default, or `circle`) sets whether `owner` is a user ID or another team's single ID. A team can therefore be managed by another team — the app owns the team and the given team is added as Moderator:
+
+```json
+{
+  "name": "Example Team",
+  "owner": "<managerTeamSingleId>",
+  "owner_type": "circle",
+  "appManaged": true,
+  "role": "moderator"
+}
+```
+
+- **`role`** controls what the given entity can do in the UI:
 
   | `role`      | Level | Can manage members (UI) | Can edit settings / delete (UI) |
   |-------------|-------|-------------------------|---------------------------------|
@@ -325,6 +362,8 @@ Create one by passing `appManaged: true`:
 **Response** `201` includes `"appManaged": true`.
 
 Member management (list / add / remove / set level) and deletion all work as normal through this API — the lock only applies to the Nextcloud front-end.
+
+> ⚠️ **Do not give a human member Owner (level 9) on an app-managed team.** An app-managed team is owned by the Circles app; Circles allows only one owner, so promoting a user to level 9 (via `setMemberLevel` or a `members` entry with `"level": 9`) **transfers ownership away from the app** — the app is demoted to Admin and the team is no longer truly app-managed. Use Admin (8) as the highest level for human managers.
 
 ---
 
@@ -346,6 +385,7 @@ All member endpoints return members with these fields:
 | `statusName`   | string | Friendly status — an invited-but-not-yet-active member reads as `Invited` instead of an empty/unknown value |
 | `userType`     | int    | Member type (1=User, 2=Group, 16=Circle, etc.) |
 | `userTypeName` | string | Human-readable type name                   |
+| `circle`       | object | Present only when the member is a nested team: `{ "id": "<team single ID>", "name": "<team name>" }`. Use this instead of guessing the team from `userId`/`singleId`. |
 
 **User types**:
 
@@ -397,6 +437,8 @@ GET /circles/{circleId}/members
 POST /circles/{circleId}/members
 ```
 
+Adds a member to a team. By default a Nextcloud user is added; pass `type: "circle"` to add another team as a member (nested teams).
+
 **Body**
 ```json
 {
@@ -404,11 +446,22 @@ POST /circles/{circleId}/members
 }
 ```
 
-| Parameter | Type   | Required | Description          |
-|-----------|--------|----------|----------------------|
-| `userId`  | string | yes      | Nextcloud user ID    |
+Nest a team inside another team:
+```json
+{
+  "userId": "childTeamSingleId",
+  "type": "circle"
+}
+```
 
-**Response** `201`
+| Parameter | Type   | Required | Description                                                                 |
+|-----------|--------|----------|-----------------------------------------------------------------------------|
+| `userId`  | string | yes      | The Nextcloud user ID, or (for `type: circle`) the single ID of the team to nest |
+| `type`    | string | no       | `user` (default) or `circle`. `circle` adds another team as a member.       |
+
+A nested team is returned with `userType: 16` / `userTypeName: "Circle"` and an explicit `circle` object identifying which team it is.
+
+**Response** `201` (adding a user)
 ```json
 {
   "ocs": {
@@ -428,7 +481,33 @@ POST /circles/{circleId}/members
 }
 ```
 
-**Errors**: `400` User not found, already a member, or circle not found
+**Response** `201` (adding a team with `type: "circle"`)
+```json
+{
+  "ocs": {
+    "data": {
+      "id": "mem456",
+      "singleId": "childTeamSingleId",
+      "userId": "Design Team",
+      "displayName": "Design Team",
+      "level": 1,
+      "levelName": "Member",
+      "status": "Member",
+      "statusName": "Member",
+      "userType": 16,
+      "userTypeName": "Circle",
+      "circle": {
+        "id": "childTeamSingleId",
+        "name": "Design Team"
+      }
+    }
+  }
+}
+```
+
+A nested team can be promoted like any member: `PUT /circles/{id}/members/{memberId}/level` with `{"level": 4}` (Moderator) or `8` (Admin).
+
+**Errors**: `400` User/team not found, already a member, or circle not found
 
 ---
 

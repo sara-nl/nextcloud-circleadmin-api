@@ -13,92 +13,92 @@ use Psr\Log\LoggerInterface;
 
 class MemberApiController extends OCSController {
 
-    private CirclesAdminService $service;
-    private LoggerInterface $logger;
+	private CirclesAdminService $service;
+	private LoggerInterface $logger;
 
-    public function __construct(
-        string $appName,
-        IRequest $request,
-        CirclesAdminService $service,
-        LoggerInterface $logger
-    ) {
-        parent::__construct($appName, $request);
-        $this->service = $service;
-        $this->logger = $logger;
-    }
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		CirclesAdminService $service,
+		LoggerInterface $logger,
+	) {
+		parent::__construct($appName, $request);
+		$this->service = $service;
+		$this->logger = $logger;
+	}
 
-    /**
-     * @AdminRequired
-     * @NoCSRFRequired
-     */
-    public function index(string $circleId): DataResponse {
-        try {
-            return new DataResponse($this->service->getMembers($circleId));
-        } catch (\Exception $e) {
-            $this->logger->error('circlesadmin: members list failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
-            return new DataResponse(
-                ['message' => $e->getMessage()],
-                Http::STATUS_NOT_FOUND
-            );
-        }
-    }
+	/**
+	 * @AdminRequired
+	 * @NoCSRFRequired
+	 */
+	public function index(string $circleId): DataResponse {
+		try {
+			return new DataResponse($this->service->getMembers($circleId));
+		} catch (\Exception $e) {
+			$this->logger->error('circlesadmin: members list failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
+			return new DataResponse(
+				['message' => $e->getMessage()],
+				Http::STATUS_NOT_FOUND
+			);
+		}
+	}
 
-    /**
-     * @AdminRequired
-     * @NoCSRFRequired
-     */
-    public function add(string $circleId, string $userId): DataResponse {
-        // Member type: 'user' (default) adds a Nextcloud account; 'circle' nests
-        // another team as a member (userId is then that team's single ID).
-        $params = $this->request->getParams();
-        $type = isset($params['type']) ? (string)$params['type'] : 'user';
-        try {
-            return new DataResponse(
-                $this->service->addMember($circleId, $userId, $type),
-                Http::STATUS_CREATED
-            );
-        } catch (\InvalidArgumentException $e) {
-            return new DataResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
-        } catch (\Exception $e) {
-            $this->logger->error('circlesadmin: add member failed for ' . $circleId . '/' . $userId . ': ' . $e->getMessage(), ['exception' => $e]);
-            return new DataResponse(
-                ['message' => $e->getMessage()],
-                Http::STATUS_BAD_REQUEST
-            );
-        }
-    }
+	/**
+	 * @AdminRequired
+	 * @NoCSRFRequired
+	 */
+	public function add(string $circleId, string $userId): DataResponse {
+		// Member type: 'user' (default) adds a Nextcloud account; 'circle' nests
+		// another team as a member (userId is then that team's single ID).
+		$params = $this->request->getParams();
+		$type = isset($params['type']) ? (string)$params['type'] : 'user';
+		try {
+			return new DataResponse(
+				$this->service->addMember($circleId, $userId, $type),
+				Http::STATUS_CREATED
+			);
+		} catch (\InvalidArgumentException $e) {
+			return new DataResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+		} catch (\Exception $e) {
+			$this->logger->error('circlesadmin: add member failed for ' . $circleId . '/' . $userId . ': ' . $e->getMessage(), ['exception' => $e]);
+			return new DataResponse(
+				['message' => $e->getMessage()],
+				Http::STATUS_BAD_REQUEST
+			);
+		}
+	}
 
-    /**
-     * @AdminRequired
-     * @NoCSRFRequired
-     */
-    public function remove(string $circleId, string $memberId): DataResponse {
-        try {
-            $this->service->removeMember($circleId, $memberId);
-            return new DataResponse(['message' => 'Member removed']);
-        } catch (\Exception $e) {
-            $this->logger->error('circlesadmin: remove member failed: ' . $e->getMessage(), ['exception' => $e]);
-            return new DataResponse(
-                ['message' => $e->getMessage()],
-                Http::STATUS_BAD_REQUEST
-            );
-        }
-    }
+	/**
+	 * @AdminRequired
+	 * @NoCSRFRequired
+	 */
+	public function remove(string $circleId, string $memberId): DataResponse {
+		try {
+			$this->service->removeMember($circleId, $memberId);
+			return new DataResponse(['message' => 'Member removed']);
+		} catch (\Exception $e) {
+			$this->logger->error('circlesadmin: remove member failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new DataResponse(
+				['message' => $e->getMessage()],
+				Http::STATUS_BAD_REQUEST
+			);
+		}
+	}
 
-    /**
-     * @AdminRequired
-     * @NoCSRFRequired
-     */
-    public function setLevel(string $circleId, string $memberId, int $level): DataResponse {
-        try {
-            $this->service->setMemberLevel($circleId, $memberId, $level);
-            return new DataResponse(['message' => 'Level updated']);
-        } catch (\Exception $e) {
-            $this->logger->error('circlesadmin: set level failed: ' . $e->getMessage(), ['exception' => $e]);
-            return new DataResponse(
-                ['message' => $e->getMessage()],
-                Http::STATUS_BAD_REQUEST
-            );
-        }
-    }
+	/**
+	 * @AdminRequired
+	 * @NoCSRFRequired
+	 */
+	public function setLevel(string $circleId, string $memberId, int $level): DataResponse {
+		try {
+			$this->service->setMemberLevel($circleId, $memberId, $level);
+			return new DataResponse(['message' => 'Level updated']);
+		} catch (\Exception $e) {
+			$this->logger->error('circlesadmin: set level failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new DataResponse(
+				['message' => $e->getMessage()],
+				Http::STATUS_BAD_REQUEST
+			);
+		}
+	}
 }

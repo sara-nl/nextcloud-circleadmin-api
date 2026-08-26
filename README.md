@@ -294,6 +294,7 @@ Send one or more flag names with a truthy (`1`, `true`) or falsy (`0`, `false`) 
 | `friend`     | 128    | Leden kunnen anderen uitnodigen                        | Members may invite others                                      |
 | `protected`  | 256    | Wachtwoordbeveiliging afdwingen voor **gedeelde bestanden** | Enforces a password on **file shares** made with this team — **not** a password to join the team (see note) |
 | `local`      | 4096   | *(local team)*                                         | Team stays on this instance only; the opposite of `federated`  |
+| `root`       | 8192   | *(no UI checkbox)*                                     | Team **cannot be nested** inside another team (blocks adding it as a `type: circle` member) |
 | `federated`  | 32768  | Sta federatieleden toe / *Allow federated members*     | **Lets federated users be added via the Contacts app**         |
 | `mountpoint` | 65536  | *(no UI checkbox)*                                     | Generates a Files folder for the team                          |
 
@@ -304,6 +305,8 @@ Send one or more flag names with a truthy (`1`, `true`) or falsy (`0`, `false`) 
 > **About `protected`**: this maps to Nextcloud's *"Enforce password protection for files shared with this team"*, so its effect is only visible when you share a file with the team. It is **not** a password to join the team, and no team password is stored. The related *"Use a single password for all shares"* option is a separate setting that this API does not manage.
 
 > **`local` vs `federated`**: these are opposites. For a genuinely federated team, set `federated=true` and `local=false`. Nextcloud may re-assert `local` if you enable `federated` without disabling it.
+
+> **About `root`**: setting `root=true` marks the team as a top-level team that *cannot* be added as a member of another team. If you use [nested teams](#add-member), do **not** set `root` on a team you intend to nest — Circles will refuse to add it as a `type: circle` member. Leave `root` off (the default) for teams that may become children.
 
 ### Enable federated members (common case)
 

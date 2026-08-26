@@ -1,4 +1,32 @@
 {
+    "name": "sara-nl/circlesadmin",
+    "license": "AGPL-3.0-or-later",
+    "config": {
+        "optimize-autoloader": true,
+        "classmap-authoritative": true,
+        "sort-packages": true,
+        "platform": {
+            "php": "8.4"
+        },
+        "allow-plugins": {
+            "bamarni/composer-bin-plugin": true
+        }
+    },
+    "scripts": {
+        "post-install-cmd": "@composer bin all install --ansi",
+        "cs:fix": "php-cs-fixer fix",
+        "cs:check": "php-cs-fixer fix --dry-run --diff",
+        "lint": "find . -name \\*.php -not -path './vendor/*' -not -path './vendor-bin/*' -not -path './node_modules/*' -print0 | xargs -0 -n1 php -l"
+    },
+    "require-dev": {
+        "bamarni/composer-bin-plugin": "^1.8"
+    },
+    "extra": {
+        "bamarni-bin": {
+            "bin-links": true,
+            "forward-command": true
+        }
+    },
     "autoload": {
         "psr-4": {
             "OCA\\CirclesAdmin\\": "lib/"

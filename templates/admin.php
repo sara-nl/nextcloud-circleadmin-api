@@ -12,141 +12,142 @@
 $base = '/ocs/v2.php/apps/circlesadmin/api/v1';
 
 $flagRows = [
-    ['visible',    '8',     'Visible to everyone',                              'Found in search; otherwise the exact name is required.'],
-    ['open',       '16',    'Anyone can join',                                  'Users may join without an invitation.'],
-    ['invite',     '32',    'Members must accept the invitation',               'Adding a member creates an invitation to accept.'],
-    ['request',    '64',    'Join requests need moderator approval',            'Requests must be confirmed by a moderator.'],
-    ['friend',     '128',   'Members can invite others',                        'Members may add new members.'],
-    ['protected',  '256',   'Enforce password on shared files',                 'Password on file shares made with the team, not a join password.'],
-    ['local',      '4096',  'Local team',                                       'Stays on this instance; the opposite of federated.'],
-    ['federated',  '32768', 'Allow federated members',                          'Lets federated users be added via the Contacts app.'],
-    ['mountpoint', '65536', 'Generate a Files folder',                          'Creates a Files folder for the team. No UI checkbox.'],
+	['visible',    '8',     'Visible to everyone',                              'Found in search; otherwise the exact name is required.'],
+	['open',       '16',    'Anyone can join',                                  'Users may join without an invitation.'],
+	['invite',     '32',    'Members must accept the invitation',               'Adding a member creates an invitation to accept.'],
+	['request',    '64',    'Join requests need moderator approval',            'Requests must be confirmed by a moderator.'],
+	['friend',     '128',   'Members can invite others',                        'Members may add new members.'],
+	['protected',  '256',   'Enforce password on shared files',                 'Password on file shares made with the team, not a join password.'],
+	['local',      '4096',  'Local team',                                       'Stays on this instance; the opposite of federated.'],
+	['root',       '8192',  'Cannot be nested',                                 'Team cannot be added as a member of another team. Leave off for teams you want to nest.'],
+	['federated',  '32768', 'Allow federated members',                          'Lets federated users be added via the Contacts app.'],
+	['mountpoint', '65536', 'Generate a Files folder',                          'Creates a Files folder for the team. No UI checkbox.'],
 ];
 
 $endpoints = [
-    [
-        'group' => 'Teams',
-        'items' => [
-            [
-                'method' => 'GET', 'path' => '/circles',
-                'summary' => 'List all teams',
-                'desc' => 'Every team on the instance, including system, hidden and backend teams.',
-                'params' => [],
-                'body' => null,
-                'response' => "[\n  {\n    \"id\": \"abc123\",\n    \"name\": \"My Team\",\n    \"owner\": \"john\",\n    \"memberCount\": 3,\n    \"config\": 0,\n    \"configFlags\": [],\n    \"appManaged\": false,\n    \"federated\": false,\n    \"source\": 16\n  }\n]",
-            ],
-            [
-                'method' => 'GET', 'path' => '/circles/{circleId}',
-                'summary' => 'Team details and members',
-                'desc' => 'Full team info including description and every member.',
-                'params' => [['circleId', 'path', 'Team single ID']],
-                'body' => null,
-                'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"My Team\",\n  \"owner\": \"john\",\n  \"config\": 24,\n  \"configFlags\": [\"visible\", \"open\"],\n  \"appManaged\": false,\n  \"federated\": false,\n  \"description\": \"...\",\n  \"members\": [ { \"userId\": \"john\", \"levelName\": \"Owner\", \"statusName\": \"Member\" } ]\n}",
-            ],
-            [
-                'method' => 'POST', 'path' => '/circles',
-                'summary' => 'Create a team',
-                'desc' => 'Creates a team. Pass config flags to set them at creation. Use appManaged for a locked team.',
-                'params' => [
-                    ['name', 'body', 'Team name, min 3 characters. Required.'],
-                    ['owner', 'body', 'Owner of the team: a user ID, or (with owner_type=circle) a team single ID. Defaults to the admin user. Optional (becomes the role, e.g. moderator, when appManaged).'],
-                    ['owner_type', 'body', 'user (default) or circle. circle makes owner a team instead of a user.'],
-                    ['desc', 'body', 'Description. Named desc, not description, due to an OCS framework limit.'],
-                    ['federated', 'body', 'true for a federated team.'],
-                    ['appManaged', 'body', 'true for an app-managed (locked) team.'],
-                    ['role', 'body', 'App-managed only: role of owner: moderator (default), admin, member.'],
-                    ['members', 'body', 'Optional array to populate the team: each {userId, type: user|circle, level: 1/4/8/9}. Best-effort; failures reported under memberErrors. On an app-managed team, avoid level 9 (Owner) — it transfers ownership away from the app.'],
-                    ['<flag>', 'body', 'Any config flag (federated, visible, open, ...) as true/false.'],
-                ],
-                'body' => "{\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"desc\": \"Optional\",\n  \"members\": [\n    { \"userId\": \"childTeamId\", \"type\": \"circle\", \"level\": 4 }\n  ]\n}",
-                'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"config\": 36864,\n  \"configFlags\": [\"local\", \"federated\"],\n  \"appManaged\": false,\n  \"federated\": true\n}",
-            ],
-            [
-                'method' => 'PUT', 'path' => '/circles/{circleId}',
-                'summary' => 'Update name and description',
-                'desc' => 'Provide at least one of name or description.',
-                'params' => [
-                    ['circleId', 'path', 'Team single ID'],
-                    ['name', 'body', 'New name, min 3 characters.'],
-                    ['description', 'body', 'New description.'],
-                ],
-                'body' => "{\n  \"name\": \"Renamed Team\",\n  \"description\": \"...\"\n}",
-                'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"Renamed Team\",\n  \"configFlags\": [],\n  \"appManaged\": false,\n  \"federated\": false\n}",
-            ],
-            [
-                'method' => 'PUT', 'path' => '/circles/{circleId}/config',
-                'summary' => 'Set config flags',
-                'desc' => 'Toggle one or more flags. Send flag names with true/false. Unmentioned flags stay unchanged.',
-                'params' => [
-                    ['circleId', 'path', 'Team single ID'],
-                    ['<flag>', 'body', 'One or more of the flags below, each true or false.'],
-                ],
-                'body' => "{\n  \"federated\": true,\n  \"visible\": true,\n  \"local\": false\n}",
-                'response' => "{\n  \"id\": \"abc123\",\n  \"config\": 40968,\n  \"configFlags\": [\"visible\", \"federated\"],\n  \"federated\": true\n}",
-                'flags' => true,
-            ],
-            [
-                'method' => 'DELETE', 'path' => '/circles/{circleId}',
-                'summary' => 'Delete a team',
-                'desc' => 'Deletes any team regardless of owner. App-managed teams are unlocked automatically first.',
-                'params' => [['circleId', 'path', 'Team single ID']],
-                'body' => null,
-                'response' => "{\n  \"message\": \"Circle deleted\"\n}",
-            ],
-        ],
-    ],
-    [
-        'group' => 'Members',
-        'items' => [
-            [
-                'method' => 'GET', 'path' => '/circles/{circleId}/members',
-                'summary' => 'List members',
-                'desc' => 'Every member of the team.',
-                'params' => [['circleId', 'path', 'Team single ID']],
-                'body' => null,
-                'response' => "[\n  {\n    \"id\": \"mem456\",\n    \"userId\": \"john\",\n    \"level\": 9,\n    \"levelName\": \"Owner\",\n    \"statusName\": \"Member\",\n    \"userType\": 1,\n    \"userTypeName\": \"User\"\n  },\n  {\n    \"id\": \"mem789\",\n    \"userId\": \"Design Team\",\n    \"level\": 4,\n    \"levelName\": \"Moderator\",\n    \"userType\": 16,\n    \"userTypeName\": \"Circle\",\n    \"circle\": { \"id\": \"childTeamId\", \"name\": \"Design Team\" }\n  }\n]",
-            ],
-            [
-                'method' => 'POST', 'path' => '/circles/{circleId}/members',
-                'summary' => 'Add a member',
-                'desc' => 'Adds a Nextcloud user to the team. Pass type=circle to nest another team as a member.',
-                'params' => [
-                    ['circleId', 'path', 'Team single ID'],
-                    ['userId', 'body', 'User ID, or (for type=circle) the single ID of the team to nest. Required.'],
-                    ['type', 'body', 'user (default) or circle. circle adds another team as a member.'],
-                ],
-                'body' => "{\n  \"userId\": \"jane\",\n  \"type\": \"user\"\n}",
-                'response' => "{\n  \"id\": \"mem789\",\n  \"userId\": \"jane\",\n  \"level\": 1,\n  \"levelName\": \"Member\",\n  \"statusName\": \"Member\"\n}",
-            ],
-            [
-                'method' => 'PUT', 'path' => '/circles/{circleId}/members/{memberId}/level',
-                'summary' => 'Set member level',
-                'desc' => 'Levels: 1 Member, 4 Moderator, 8 Admin, 9 Owner (transfers ownership).',
-                'params' => [
-                    ['circleId', 'path', 'Team single ID'],
-                    ['memberId', 'path', 'Member ID'],
-                    ['level', 'body', 'New level: 1, 4, 8 or 9. Required.'],
-                ],
-                'body' => "{\n  \"level\": 4\n}",
-                'response' => "{\n  \"message\": \"Level updated\"\n}",
-            ],
-            [
-                'method' => 'DELETE', 'path' => '/circles/{circleId}/members/{memberId}',
-                'summary' => 'Remove a member',
-                'desc' => 'Removes a member from the team.',
-                'params' => [
-                    ['circleId', 'path', 'Team single ID'],
-                    ['memberId', 'path', 'Member ID'],
-                ],
-                'body' => null,
-                'response' => "{\n  \"message\": \"Member removed\"\n}",
-            ],
-        ],
-    ],
+	[
+		'group' => 'Teams',
+		'items' => [
+			[
+				'method' => 'GET', 'path' => '/circles',
+				'summary' => 'List all teams',
+				'desc' => 'Every team on the instance, including system, hidden and backend teams.',
+				'params' => [],
+				'body' => null,
+				'response' => "[\n  {\n    \"id\": \"abc123\",\n    \"name\": \"My Team\",\n    \"owner\": \"john\",\n    \"memberCount\": 3,\n    \"config\": 0,\n    \"configFlags\": [],\n    \"appManaged\": false,\n    \"federated\": false,\n    \"source\": 16\n  }\n]",
+			],
+			[
+				'method' => 'GET', 'path' => '/circles/{circleId}',
+				'summary' => 'Team details and members',
+				'desc' => 'Full team info including description and every member.',
+				'params' => [['circleId', 'path', 'Team single ID']],
+				'body' => null,
+				'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"My Team\",\n  \"owner\": \"john\",\n  \"config\": 24,\n  \"configFlags\": [\"visible\", \"open\"],\n  \"appManaged\": false,\n  \"federated\": false,\n  \"description\": \"...\",\n  \"members\": [ { \"userId\": \"john\", \"levelName\": \"Owner\", \"statusName\": \"Member\" } ]\n}",
+			],
+			[
+				'method' => 'POST', 'path' => '/circles',
+				'summary' => 'Create a team',
+				'desc' => 'Creates a team. Pass config flags to set them at creation. Use appManaged for a locked team.',
+				'params' => [
+					['name', 'body', 'Team name, min 3 characters. Required.'],
+					['owner', 'body', 'Owner of the team: a user ID, or (with owner_type=circle) a team single ID. Defaults to the admin user. Optional (becomes the role, e.g. moderator, when appManaged).'],
+					['owner_type', 'body', 'user (default) or circle. circle makes owner a team instead of a user.'],
+					['desc', 'body', 'Description. Named desc, not description, due to an OCS framework limit.'],
+					['federated', 'body', 'true for a federated team.'],
+					['appManaged', 'body', 'true for an app-managed (locked) team.'],
+					['role', 'body', 'App-managed only: role of owner: moderator (default), admin, member.'],
+					['members', 'body', 'Optional array to populate the team: each {userId, type: user|circle, level: 1/4/8/9}. Best-effort; failures reported under memberErrors. On an app-managed team, avoid level 9 (Owner) — it transfers ownership away from the app.'],
+					['<flag>', 'body', 'Any config flag (federated, visible, open, ...) as true/false.'],
+				],
+				'body' => "{\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"desc\": \"Optional\",\n  \"members\": [\n    { \"userId\": \"childTeamId\", \"type\": \"circle\", \"level\": 4 }\n  ]\n}",
+				'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"New Team\",\n  \"owner\": \"john\",\n  \"config\": 36864,\n  \"configFlags\": [\"local\", \"federated\"],\n  \"appManaged\": false,\n  \"federated\": true\n}",
+			],
+			[
+				'method' => 'PUT', 'path' => '/circles/{circleId}',
+				'summary' => 'Update name and description',
+				'desc' => 'Provide at least one of name or description.',
+				'params' => [
+					['circleId', 'path', 'Team single ID'],
+					['name', 'body', 'New name, min 3 characters.'],
+					['description', 'body', 'New description.'],
+				],
+				'body' => "{\n  \"name\": \"Renamed Team\",\n  \"description\": \"...\"\n}",
+				'response' => "{\n  \"id\": \"abc123\",\n  \"name\": \"Renamed Team\",\n  \"configFlags\": [],\n  \"appManaged\": false,\n  \"federated\": false\n}",
+			],
+			[
+				'method' => 'PUT', 'path' => '/circles/{circleId}/config',
+				'summary' => 'Set config flags',
+				'desc' => 'Toggle one or more flags. Send flag names with true/false. Unmentioned flags stay unchanged.',
+				'params' => [
+					['circleId', 'path', 'Team single ID'],
+					['<flag>', 'body', 'One or more of the flags below, each true or false.'],
+				],
+				'body' => "{\n  \"federated\": true,\n  \"visible\": true,\n  \"local\": false\n}",
+				'response' => "{\n  \"id\": \"abc123\",\n  \"config\": 40968,\n  \"configFlags\": [\"visible\", \"federated\"],\n  \"federated\": true\n}",
+				'flags' => true,
+			],
+			[
+				'method' => 'DELETE', 'path' => '/circles/{circleId}',
+				'summary' => 'Delete a team',
+				'desc' => 'Deletes any team regardless of owner. App-managed teams are unlocked automatically first.',
+				'params' => [['circleId', 'path', 'Team single ID']],
+				'body' => null,
+				'response' => "{\n  \"message\": \"Circle deleted\"\n}",
+			],
+		],
+	],
+	[
+		'group' => 'Members',
+		'items' => [
+			[
+				'method' => 'GET', 'path' => '/circles/{circleId}/members',
+				'summary' => 'List members',
+				'desc' => 'Every member of the team.',
+				'params' => [['circleId', 'path', 'Team single ID']],
+				'body' => null,
+				'response' => "[\n  {\n    \"id\": \"mem456\",\n    \"userId\": \"john\",\n    \"level\": 9,\n    \"levelName\": \"Owner\",\n    \"statusName\": \"Member\",\n    \"userType\": 1,\n    \"userTypeName\": \"User\"\n  },\n  {\n    \"id\": \"mem789\",\n    \"userId\": \"Design Team\",\n    \"level\": 4,\n    \"levelName\": \"Moderator\",\n    \"userType\": 16,\n    \"userTypeName\": \"Circle\",\n    \"circle\": { \"id\": \"childTeamId\", \"name\": \"Design Team\" }\n  }\n]",
+			],
+			[
+				'method' => 'POST', 'path' => '/circles/{circleId}/members',
+				'summary' => 'Add a member',
+				'desc' => 'Adds a Nextcloud user to the team. Pass type=circle to nest another team as a member.',
+				'params' => [
+					['circleId', 'path', 'Team single ID'],
+					['userId', 'body', 'User ID, or (for type=circle) the single ID of the team to nest. Required.'],
+					['type', 'body', 'user (default) or circle. circle adds another team as a member.'],
+				],
+				'body' => "{\n  \"userId\": \"jane\",\n  \"type\": \"user\"\n}",
+				'response' => "{\n  \"id\": \"mem789\",\n  \"userId\": \"jane\",\n  \"level\": 1,\n  \"levelName\": \"Member\",\n  \"statusName\": \"Member\"\n}",
+			],
+			[
+				'method' => 'PUT', 'path' => '/circles/{circleId}/members/{memberId}/level',
+				'summary' => 'Set member level',
+				'desc' => 'Levels: 1 Member, 4 Moderator, 8 Admin, 9 Owner (transfers ownership).',
+				'params' => [
+					['circleId', 'path', 'Team single ID'],
+					['memberId', 'path', 'Member ID'],
+					['level', 'body', 'New level: 1, 4, 8 or 9. Required.'],
+				],
+				'body' => "{\n  \"level\": 4\n}",
+				'response' => "{\n  \"message\": \"Level updated\"\n}",
+			],
+			[
+				'method' => 'DELETE', 'path' => '/circles/{circleId}/members/{memberId}',
+				'summary' => 'Remove a member',
+				'desc' => 'Removes a member from the team.',
+				'params' => [
+					['circleId', 'path', 'Team single ID'],
+					['memberId', 'path', 'Member ID'],
+				],
+				'body' => null,
+				'response' => "{\n  \"message\": \"Member removed\"\n}",
+			],
+		],
+	],
 ];
 
 $methodClass = static function (string $m): string {
-    return 'cadm-m-' . strtolower($m);
+	return 'cadm-m-' . strtolower($m);
 };
 ?>
 
@@ -176,7 +177,9 @@ $methodClass = static function (string $m): string {
         <ul class="cadm-list">
             <?php foreach ($group['items'] as $i => $ep): ?>
                 <li class="cadm-ep">
-                    <details<?php if ($group['group'] === 'Teams' && $i === 0) { echo ' open'; } ?>>
+                    <details<?php if ($group['group'] === 'Teams' && $i === 0) {
+                    	echo ' open';
+                    } ?>>
                         <summary class="cadm-summary">
                             <span class="cadm-badge <?php p($methodClass($ep['method'])); ?>"><?php p($ep['method']); ?></span>
                             <code class="cadm-path"><?php p($ep['path']); ?></code>

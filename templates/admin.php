@@ -19,6 +19,7 @@ $flagRows = [
     ['friend',     '128',   'Members can invite others',                        'Members may add new members.'],
     ['protected',  '256',   'Enforce password on shared files',                 'Password on file shares made with the team, not a join password.'],
     ['local',      '4096',  'Local team',                                       'Stays on this instance; the opposite of federated.'],
+    ['root',       '8192',  'Cannot be nested',                                 'Team cannot be added as a member of another team. Leave off for teams you want to nest.'],
     ['federated',  '32768', 'Allow federated members',                          'Lets federated users be added via the Contacts app.'],
     ['mountpoint', '65536', 'Generate a Files folder',                          'Creates a Files folder for the team. No UI checkbox.'],
 ];

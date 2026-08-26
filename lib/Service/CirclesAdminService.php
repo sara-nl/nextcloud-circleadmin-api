@@ -487,6 +487,7 @@ class CirclesAdminService {
         'friend' => Circle::CFG_FRIEND,         // 128  - members can invite their friends
         'protected' => Circle::CFG_PROTECTED,   // 256  - password protected
         'local' => Circle::CFG_LOCAL,           // 4096 - local only (not federated)
+        'root' => Circle::CFG_ROOT,             // 8192 - team cannot be nested inside another team
         'federated' => Circle::CFG_FEDERATED,   // 32768- federated: add users from other instances
         'mountpoint' => Circle::CFG_MOUNTPOINT, // 65536- create a Files folder
     ];

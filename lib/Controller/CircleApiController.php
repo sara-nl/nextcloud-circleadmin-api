@@ -80,7 +80,7 @@ class CircleApiController extends OCSController {
         $role = isset($params["role"]) ? (string)$params["role"] : 'moderator';
         // Optional config flags to set on the new team (e.g. federated, visible,
         // open). Applied after creation.
-        $known = ['visible', 'open', 'invite', 'request', 'friend', 'protected', 'local', 'federated', 'mountpoint'];
+        $known = ['visible', 'open', 'invite', 'request', 'friend', 'protected', 'local', 'root', 'federated', 'mountpoint'];
         $configFlags = [];
         foreach ($known as $flag) {
             // On create, only an explicit truthy flag is a change worth applying.
@@ -158,14 +158,15 @@ class CircleApiController extends OCSController {
     /**
      * Toggle config flags on a team. Send the flag name with a truthy/falsy
      * value, e.g. `federated=1`, `visible=1`, `open=0`. Enabling `federated`
-     * lets federated users be added via the Contacts app.
+     * lets federated users be added via the Contacts app. Enabling `root`
+     * prevents the team from being nested inside another team.
      *
      * @AdminRequired
      * @NoCSRFRequired
      */
     public function config(string $circleId): DataResponse {
         $params = $this->request->getParams();
-        $known = ['visible', 'open', 'invite', 'request', 'friend', 'protected', 'local', 'federated', 'mountpoint'];
+        $known = ['visible', 'open', 'invite', 'request', 'friend', 'protected', 'local', 'root', 'federated', 'mountpoint'];
         $flags = [];
         foreach ($known as $name) {
             if (array_key_exists($name, $params)) {

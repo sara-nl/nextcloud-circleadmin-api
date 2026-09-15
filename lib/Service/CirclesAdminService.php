@@ -223,9 +223,15 @@ class CirclesAdminService {
 			}
 		}
 
+		$config = Circle::CFG_APP | $flagBits;
+
 		$this->circlesManager->startSuperSession();
-		// startAppSession sets a "current app" patron so member operations
-		// (createCircle owner, addMember) have a valid invitedBy context.
+		// startAppSession sets a "current app" patron so the app itself can be the
+		// circle owner. The manager is NOT added here: inside the app-session
+		// Circles cannot resolve a human member (getFederatedUserBySingleId ->
+		// "singleId not found" on NC34, MemberNotFound on NC33), which failed the
+		// whole create. We add the manager afterwards in a fresh super/occ session
+		// (the same path setMemberLevel/addMember use), which resolves correctly.
 		$this->circlesManager->startAppSession('circlesadmin');
 		try {
 			// Owner is the Circles app itself, not a user (like the group system circles).
@@ -236,14 +242,22 @@ class CirclesAdminService {
 			// Lock the team from the front-end: sets CFG_APP.
 			$this->circlesManager->flagAsAppManaged($circleId, true);
 
+			// Build the response from the circle we already hold, like the regular
+			// createCircle path does. Re-loading in a fresh session is unreliable
+			// right after creation ("Circle not found"), so we don't.
+			$data = $this->formatCircle($circle);
+			$data['config'] = $config;
+			$data['configFlags'] = $this->configFlagNames($config);
+			$data['appManaged'] = true;
+			$data['federated'] = ($config & Circle::CFG_FEDERATED) !== 0;
+			$data['description'] = $description ?? '';
+
 			if (($description !== null && $description !== '') || $flagBits !== 0) {
 				$qb = $this->db->getQueryBuilder();
 				$qb->update('circles_circle');
 				if ($flagBits !== 0) {
 					// Keep CFG_APP (just set by flagAsAppManaged) and OR in the flags.
-					$qb->set('config', $qb->createNamedParameter(
-						Circle::CFG_APP | $flagBits, IQueryBuilder::PARAM_INT
-					));
+					$qb->set('config', $qb->createNamedParameter($config, IQueryBuilder::PARAM_INT));
 				}
 				if ($description !== null && $description !== '') {
 					$qb->set('description', $qb->createNamedParameter($description));
@@ -251,26 +265,30 @@ class CirclesAdminService {
 				$qb->where($qb->expr()->eq('unique_id', $qb->createNamedParameter($circleId)));
 				$qb->executeStatement();
 			}
-
-			if ($managerUserId !== '') {
-				// The manager can be a user (default) or another team (owner_type=circle).
-				$manager = $this->circlesManager->getFederatedUser($managerUserId, $this->memberType($managerType));
-				$member = $this->circlesManager->addMember($circleId, $manager);
-				$level = $this->roleLevel($role);
-				if ($level !== Member::LEVEL_MEMBER) {
-					$this->circlesManager->levelMember($member->getId(), $level);
-				}
-			}
-
-			$probe = new CircleProbe();
-			$probe->includeSystemCircles();
-			$circle = $this->circlesManager->getCircle($circleId, $probe);
-			$data = $this->formatCircle($circle);
-			$data['description'] = $description ?? '';
-			return $data;
 		} finally {
 			$this->stopSession();
 		}
+
+		// Add the manager in a separate session, outside the app-session. This is
+		// the working member path (addMember/setMemberLevel each open their own
+		// super/occ session). Best-effort: if it fails the team still exists and
+		// the error is reported under managerError rather than failing the create.
+		if ($managerUserId !== '') {
+			try {
+				$member = $this->addMember($circleId, $managerUserId, $managerType);
+				$level = $this->roleLevel($role);
+				if ($level !== Member::LEVEL_MEMBER) {
+					$this->setMemberLevel($circleId, $member['id'], $level);
+					$member['level'] = $level;
+					$member['levelName'] = $this->levelName($level);
+				}
+				$data['members'] = [$member];
+			} catch (\Throwable $e) {
+				$data['managerError'] = $e->getMessage();
+			}
+		}
+
+		return $data;
 	}
 
 	public function updateCircle(string $circleId, ?string $name, ?string $description): array {

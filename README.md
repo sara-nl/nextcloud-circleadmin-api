@@ -662,5 +662,5 @@ so `tests/stubs/circles.php` describes the Circles classes and methods this app 
 method there when the code starts using it.
 
 GitHub Actions runs `composer lint`, `composer cs:check` and the end-to-end test on Nextcloud 34
-and 35 for every pull request, and weekly against the newest Nextcloud release. Psalm runs
+and 35 for every pull request, and monthly against the newest Nextcloud release. Psalm runs
 against the `nextcloud/ocp` of the oldest and the newest Nextcloud that `info.xml` allows.

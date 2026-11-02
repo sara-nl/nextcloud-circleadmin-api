@@ -657,5 +657,10 @@ FORCE_ENABLE=1 tests/e2e/run-docker.sh latest   # a version newer than max-versi
 It needs Docker, curl and python3. `tests/e2e/e2e.sh` can also test an existing server over ssh;
 see the comment at the top of the script.
 
+`composer psalm` runs static analysis on `lib/`. The Circles app is not part of `nextcloud/ocp`,
+so `tests/stubs/circles.php` describes the Circles classes and methods this app uses; add a
+method there when the code starts using it.
+
 GitHub Actions runs `composer lint`, `composer cs:check` and the end-to-end test on Nextcloud 34
-and 35 for every pull request, and weekly against the newest Nextcloud release.
+and 35 for every pull request, and monthly against the newest Nextcloud release. Psalm runs
+against the `nextcloud/ocp` of the oldest and the newest Nextcloud that `info.xml` allows.

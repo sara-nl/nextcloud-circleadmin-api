@@ -6,12 +6,14 @@ namespace OCA\CirclesAdmin\Controller;
 
 use OCA\CirclesAdmin\Service\CirclesAdminService;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
 class MemberApiController extends OCSController {
+	use LogsFailures;
 
 	private CirclesAdminService $service;
 	private LoggerInterface $logger;
@@ -27,15 +29,12 @@ class MemberApiController extends OCSController {
 		$this->logger = $logger;
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function index(string $circleId): DataResponse {
 		try {
 			return new DataResponse($this->service->getMembers($circleId));
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: members list failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: members list failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_NOT_FOUND
@@ -43,10 +42,7 @@ class MemberApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function add(string $circleId, string $userId): DataResponse {
 		// Member type: 'user' (default) adds a Nextcloud account; 'circle' nests
 		// another team as a member (userId is then that team's single ID).
@@ -60,7 +56,7 @@ class MemberApiController extends OCSController {
 		} catch (\InvalidArgumentException $e) {
 			return new DataResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: add member failed for ' . $circleId . '/' . $userId . ': ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: add member failed for ' . $circleId . '/' . $userId . ': ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST
@@ -68,16 +64,13 @@ class MemberApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function remove(string $circleId, string $memberId): DataResponse {
 		try {
 			$this->service->removeMember($circleId, $memberId);
 			return new DataResponse(['message' => 'Member removed']);
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: remove member failed: ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: remove member failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST
@@ -85,16 +78,13 @@ class MemberApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function setLevel(string $circleId, string $memberId, int $level): DataResponse {
 		try {
 			$this->service->setMemberLevel($circleId, $memberId, $level);
 			return new DataResponse(['message' => 'Level updated']);
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: set level failed: ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: set level failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST

@@ -129,6 +129,7 @@ POST /circles
 | `appManaged` | bool   | no       | `true` creates an **app-managed (locked) team** — see [App-managed teams](#app-managed-locked-teams) |
 | `role`       | string | no       | For app-managed teams only: role of the given `owner` — `moderator` (default), `admin`, or `member` |
 | `members`    | array  | no       | Members to add to the new team in the same request (see below) |
+| `teamFolder` | bool   | no       | Nextcloud 35+: `false` skips the Team Folder that Circles creates for new teams. Omitted or `true` follows the instance setting (`occ config:app:set circles team_folder_auto_create`). Ignored on older versions. |
 | *config flags* | bool | no       | Any [config flag](#team-configuration-flags) can be enabled on creation, e.g. `federated`, `visible`, `open`. Only flags sent as `true` are applied; a flag sent as `false` (or omitted) is a no-op. |
 
 **Adding members at creation.** Pass a `members` array to create the team and populate it in one request. Each entry:
@@ -638,3 +639,28 @@ curl -u $AUTH $HEADERS -X POST "$BASE/circles/{circleId}/members" -d '{"userId":
 # Deletion works too — the API clears the lock automatically
 curl -u $AUTH $HEADERS -X DELETE "$BASE/circles/{circleId}"
 ```
+
+## Tests
+
+The end-to-end test starts the official Nextcloud Docker image, installs the app from this
+checkout and calls every API endpoint: access for anonymous and non-admin users, creating,
+updating and deleting teams, config flags, members and levels, nested and team-owned teams,
+app-managed teams and the admin page. On Nextcloud 35+ it also installs groupfolders and checks
+that new teams get a Team Folder, that `teamFolder: false` skips it, and that deleting a team
+removes it.
+
+```bash
+tests/e2e/run-docker.sh 35          # image tag: 34, 35, latest, ...
+FORCE_ENABLE=1 tests/e2e/run-docker.sh latest   # a version newer than max-version
+```
+
+It needs Docker, curl and python3. `tests/e2e/e2e.sh` can also test an existing server over ssh;
+see the comment at the top of the script.
+
+`composer psalm` runs static analysis on `lib/`. The Circles app is not part of `nextcloud/ocp`,
+so `tests/stubs/circles.php` describes the Circles classes and methods this app uses; add a
+method there when the code starts using it.
+
+GitHub Actions runs `composer lint`, `composer cs:check` and the end-to-end test on Nextcloud 34
+and 35 for every pull request, and monthly against the newest Nextcloud release. Psalm runs
+against the `nextcloud/ocp` of the oldest and the newest Nextcloud that `info.xml` allows.

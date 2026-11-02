@@ -113,9 +113,9 @@ class CirclesAdminService {
 		}
 	}
 
-	public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = [], array $members = [], string $ownerType = 'user'): array {
+	public function createCircle(string $name, string $ownerUserId, ?string $description = null, bool $federated = false, bool $appManaged = false, string $role = 'moderator', array $configFlags = [], array $members = [], string $ownerType = 'user', bool $teamFolder = true): array {
 		if ($appManaged) {
-			$data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags, $ownerType);
+			$data = $this->createAppManagedCircle($name, $ownerUserId, $description, $role, $configFlags, $ownerType, $teamFolder);
 			return $this->addInitialMembers($data, $members);
 		}
 
@@ -135,7 +135,9 @@ class CirclesAdminService {
 		try {
 			// Owner can be a user (default) or another team (owner_type=circle).
 			$owner = $this->circlesManager->getFederatedUser($ownerUserId, $this->memberType($ownerType));
-			$circle = $this->circlesManager->createCircle($name, $owner);
+			// 5th arg ($createTeamFolder) exists since Circles 35; older versions
+			// ignore the extra positional argument.
+			$circle = $this->circlesManager->createCircle($name, $owner, false, false, $teamFolder);
 			$circleId = $circle->getSingleId();
 
 			// Fix config: appSession creates with config=2 (personal); reset to the
@@ -213,7 +215,7 @@ class CirclesAdminService {
 	 * manager. The manager may be a user (default) or another team ($managerType
 	 * = 'circle').
 	 */
-	private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = [], string $managerType = 'user'): array {
+	private function createAppManagedCircle(string $name, string $managerUserId, ?string $description, string $role = 'moderator', array $configFlags = [], string $managerType = 'user', bool $teamFolder = true): array {
 		// Bits for any requested flags, OR-ed into the config in the same write as
 		// CFG_APP below, so we never re-load the circle in a separate session.
 		$flagBits = 0;
@@ -236,8 +238,14 @@ class CirclesAdminService {
 		try {
 			// Owner is the Circles app itself, not a user (like the group system circles).
 			$appOwner = $this->getFederatedUserService()->getAppInitiator('circles', Member::APP_CIRCLES);
-			$circle = $this->circlesManager->createCircle($name, $appOwner);
+			$circle = $this->circlesManager->createCircle($name, $appOwner, false, false, $teamFolder);
 			$circleId = $circle->getSingleId();
+
+			// Since Nextcloud 35 creating the team can also create its Team Folder,
+			// and groupfolders then stops the shared Circles session ("Must
+			// initialise Super Session" below). Start it again.
+			$this->circlesManager->startSuperSession();
+			$this->circlesManager->startAppSession('circlesadmin');
 
 			// Lock the team from the front-end: sets CFG_APP.
 			$this->circlesManager->flagAsAppManaged($circleId, true);
@@ -510,11 +518,12 @@ class CirclesAdminService {
 	];
 
 	private function formatCircle(Circle $circle): array {
-		$owner = $circle->getOwner();
+		// getOwner() throws a TypeError when the team has no owner, e.g. a team
+		// whose owner was another team that has since been deleted.
 		return [
 			'id' => $circle->getSingleId(),
 			'name' => $circle->getDisplayName(),
-			'owner' => $owner ? $owner->getUserId() : null,
+			'owner' => $circle->hasOwner() ? $circle->getOwner()->getUserId() : null,
 			'memberCount' => $circle->getMembers() ? count($circle->getMembers()) : 0,
 			'config' => $circle->getConfig(),
 			'configFlags' => $this->configFlagNames($circle->getConfig()),

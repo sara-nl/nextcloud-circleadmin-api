@@ -6,12 +6,14 @@ namespace OCA\CirclesAdmin\Controller;
 
 use OCA\CirclesAdmin\Service\CirclesAdminService;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
 class CircleApiController extends OCSController {
+	use LogsFailures;
 
 	private CirclesAdminService $service;
 	private LoggerInterface $logger;
@@ -30,15 +32,12 @@ class CircleApiController extends OCSController {
 		$this->userId = $userId ?? '';
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function index(): DataResponse {
 		try {
 			return new DataResponse($this->service->listAll());
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: list failed: ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: list failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_INTERNAL_SERVER_ERROR
@@ -46,15 +45,12 @@ class CircleApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function show(string $circleId): DataResponse {
 		try {
 			return new DataResponse($this->service->getCircle($circleId));
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: show failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: show failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_NOT_FOUND
@@ -62,10 +58,7 @@ class CircleApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function create(string $name, string $owner = ''): DataResponse {
 		// Get extra options from request params (not method params to avoid Dispatcher issues)
 		$params = $this->request->getParams();
@@ -112,6 +105,11 @@ class CircleApiController extends OCSController {
 		// the `owner` value is a team's single ID. Ignored when owner defaults to
 		// the calling admin (no owner given).
 		$ownerType = isset($params['owner_type']) ? (string)$params['owner_type'] : 'user';
+		// Since Nextcloud 35, Circles creates a Team Folder (groupfolders) for every
+		// new team when the instance allows it. teamFolder=false opts out; omitted
+		// or true follows the instance policy. Ignored before Nextcloud 35.
+		$teamFolder = !array_key_exists('teamFolder', $params)
+			|| (filter_var($params['teamFolder'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool)$params['teamFolder']);
 		// For app-managed teams the app itself is the owner, so an owner in the
 		// body is optional (it becomes the human manager). Otherwise default
 		// the owner to the calling admin.
@@ -121,11 +119,11 @@ class CircleApiController extends OCSController {
 		}
 		try {
 			return new DataResponse(
-				$this->service->createCircle($name, $ownerUserId, $description, $federated, $appManaged, $role, $configFlags, $members, $ownerType),
+				$this->service->createCircle($name, $ownerUserId, $description, $federated, $appManaged, $role, $configFlags, $members, $ownerType, $teamFolder),
 				Http::STATUS_CREATED
 			);
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: create failed: ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: create failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST
@@ -133,10 +131,7 @@ class CircleApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function update(string $circleId, ?string $name = null, ?string $description = null): DataResponse {
 		if ($name === null && $description === null) {
 			return new DataResponse(
@@ -147,7 +142,7 @@ class CircleApiController extends OCSController {
 		try {
 			return new DataResponse($this->service->updateCircle($circleId, $name, $description));
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: update failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: update failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST
@@ -160,10 +155,8 @@ class CircleApiController extends OCSController {
 	 * value, e.g. `federated=1`, `visible=1`, `open=0`. Enabling `federated`
 	 * lets federated users be added via the Contacts app. Enabling `root`
 	 * prevents the team from being nested inside another team.
-	 *
-	 * @AdminRequired
-	 * @NoCSRFRequired
 	 */
+	#[NoCSRFRequired]
 	public function config(string $circleId): DataResponse {
 		$params = $this->request->getParams();
 		$known = ['visible', 'open', 'invite', 'request', 'friend', 'protected', 'local', 'root', 'federated', 'mountpoint'];
@@ -184,7 +177,7 @@ class CircleApiController extends OCSController {
 		} catch (\InvalidArgumentException $e) {
 			return new DataResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: config update failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: config update failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST
@@ -192,16 +185,13 @@ class CircleApiController extends OCSController {
 		}
 	}
 
-	/**
-	 * @AdminRequired
-	 * @NoCSRFRequired
-	 */
+	#[NoCSRFRequired]
 	public function destroy(string $circleId): DataResponse {
 		try {
 			$this->service->destroyCircle($circleId);
 			return new DataResponse(['message' => 'Circle deleted']);
 		} catch (\Exception $e) {
-			$this->logger->error('circlesadmin: destroy failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
+			$this->logFailure('circlesadmin: destroy failed for ' . $circleId . ': ' . $e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_BAD_REQUEST
